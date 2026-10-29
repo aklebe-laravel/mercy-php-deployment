@@ -59,7 +59,7 @@ class ProjectInitCommand extends Command
         $output->writeln('  1. edit config/setup.yaml (base) and config/dev.yaml, build.yaml, prod.yaml (differences)');
         $output->writeln('  2. fill in config/secrets.yaml (not versioned, keep a copy in your password manager)');
         $output->writeln('  3. "git init" in the project folder and push it to your own (private) repository');
-        $output->writeln('  4. php mercy.php install');
+        $output->writeln('  4. ./mercy install');
 
         return Command::SUCCESS;
     }

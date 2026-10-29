@@ -55,7 +55,15 @@ class UpdateProdEnvCommand extends BaseCommand
                 // a private image needs a login, the tool asks in a terminal
                 'name'  => 'registry_login',
                 'label' => 'Checking the docker registry login',
-                'task'  => fn(): bool => $deployment->hostSetup()->registryLogin(false),
+                'task'  => fn(): bool => $deployment->hostSetup()
+                    ->registryLogin(false),
+            ],
+            [
+                // ./mercy install --instance=<tab> (see HostSetup::shellCompletion())
+                'name'  => 'shell_completion',
+                'label' => 'Tab completion (bash)',
+                'task'  => fn(): bool => $deployment->hostSetup()
+                    ->shellCompletion(),
             ],
             [
                 'name'  => 'pull_docker_image',
@@ -75,12 +83,12 @@ class UpdateProdEnvCommand extends BaseCommand
             [
                 // version, image and the other calculated values follow setup.yaml,
                 // otherwise compose would start the image of the old .env
-                'name'  => 'refresh_env',
+                'name'   => 'refresh_env',
                 // also when resuming at a later step (quick, repeatable): prepares what the later steps use, e.g. a fixed secret
                 'always' => true,
-                'label' => 'Refreshing calculated .env values',
-                'task'  => fn(): bool => $deployment->refreshEnvFile($deployment->configPath.'/setup-production.env')
-                                         && $deployment->refreshEnvFile($deployment->deploymentDestinationRootPath.'/.env'),
+                'label'  => 'Refreshing calculated .env values',
+                'task'   => fn(): bool => $deployment->refreshEnvFile($deployment->configPath.'/setup-production.env')
+                                          && $deployment->refreshEnvFile($deployment->deploymentDestinationRootPath.'/.env'),
             ],
             [
                 'name'  => 'start_containers',

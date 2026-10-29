@@ -7,7 +7,7 @@
 # (typos, old names). "~" means: not set (the key exists, the value is removed after the merge).
 # Maps written as {} accept any keys below them (env, ssh.fingerprints).
 #
-# Show the effective config and where each value comes from: php mercy.php config [--all]
+# Show the effective config and where each value comes from: ./mercy config [--all]
 # =====================================================================
 
 kernel:

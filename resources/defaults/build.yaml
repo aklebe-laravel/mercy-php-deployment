@@ -1,4 +1,4 @@
-# Mercy defaults of the build stage (php build.php create): after the product base and the project dev.yaml
+# Mercy defaults of the build stage (./mercy build): after the product base and the project dev.yaml
 # (the project build.yaml extends it), before the project build.yaml. So the image is always built for production,
 # even if dev.yaml sets "local". Keep every key of dev.yaml here, otherwise dev values would leak into the image.
 kernel:

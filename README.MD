@@ -6,11 +6,12 @@ Everything is driven by YAML configs (`setup.yaml`) and the step lists in `src/C
 
 Used by:
 
-| Project                                                              | Entry point                                   | Commands            |
-|----------------------------------------------------------------------|-----------------------------------------------|---------------------|
-| [mercy-scaffold](https://github.com/aklebe-laravel/mercy-scaffold)   | `mercy.php` (`MercyApp::runDev()`)            | `install`, `update` |
-|                                                                      | `build.php` (`MercyApp::runDevBuildToProd()`) | `create`            |
-| [mercy-installer](https://github.com/aklebe-laravel/mercy-installer) | `mercy.php` (`MercyApp::runProd()`)           | `install`, `update` |
+| Project                                                              | Entry point                                       | Commands                     |
+|----------------------------------------------------------------------|---------------------------------------------------|------------------------------|
+| [mercy-scaffold](https://github.com/aklebe-laravel/mercy-scaffold)   | `mercy` (`MercyApp::runDev()` with `withBuild()`) | `install`, `update`, `build` |
+| [mercy-installer](https://github.com/aklebe-laravel/mercy-installer) | `mercy` (`MercyApp::runProd()`)                   | `install`, `update`          |
+
+The scripts have no extension, like Laravel's `artisan`: `./mercy install` or `php mercy install`. (Before 2.1: `mercy.php` and `build.php create`; `runDevBuildToProd()` still works, deprecated.)
 
 ```php
 use AklebeLaravel\MercyPhpDeployment\MercyApp;
@@ -28,8 +29,8 @@ Requirements: PHP 8.5, Composer, Git, Docker. `ext-zip` only for `build_steps.cr
 Every command is a list of named steps. `--info` lists them, a step number or name continues from there (all following steps run as well):
 
 ```
-php mercy.php install --info
-php mercy.php install copy_ssh
+./mercy install --info
+./mercy install copy_ssh
 ```
 
 | Command                | Steps                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -94,7 +95,7 @@ Selected `setup.yaml` keys:
 - **Keys and logins of a machine** (who needs what):
 
   | For                                         | What                                       | Where to add it                         | Done by                              |
-      |---------------------------------------------|--------------------------------------------|-----------------------------------------|--------------------------------------|
+        |---------------------------------------------|--------------------------------------------|-----------------------------------------|--------------------------------------|
   | git of the deployment (modules, composer)   | deploy key `ssh.key`                       | SSH keys at Gitea/GitHub                | `host:setup` creates and tests it    |
   | your own git commands (`git clone project`) | your key `~/.ssh/id_ed25519`               | SSH keys at Gitea/GitHub                | you; on servers use it as `ssh.key`  |
   | the git server is the right one             | host key fingerprint                       | `ssh.fingerprints` of the network       | once per network                     |
@@ -144,9 +145,9 @@ Selected `setup.yaml` keys:
        If one does not accept it, the public key is shown to add there; in a terminal it waits and tests again.
        Put `ssh.fingerprints` and `git.url_rewrites` into the network config (e.g. `networks/home.yaml`), then every
        instance in that network gets them.
-    5. Tab completion (bash): writes `~/.local/share/bash-completion/completions/<script>` (e.g. `mercy.php`), so
-       commands and instances complete in a new terminal: `./mercy.php install --instance=<tab>`. Only with
-       `./mercy.php` (the scripts have a shebang and are executable), with `php mercy.php` bash completes `php`.
+    5. Tab completion (bash): writes `~/.local/share/bash-completion/completions/mercy`, so commands and
+       instances complete in a new terminal: `./mercy install --instance=<tab>`. Only with `./mercy`
+       (shebang, executable); with `php mercy` bash completes `php`, like with `php artisan`.
 - **Git url rewrites in containers:** `copy_ssh` writes the machine's `insteadOf` rewrites to
   `<ssh.docker_dir>/gitconfig`; the scaffold's `start-container` includes it for the `sail` user.
 - **APP_KEY survives:** the config env replaces the target env on every run, `APP_KEY` (written by `key:generate`

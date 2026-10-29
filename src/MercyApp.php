@@ -40,6 +40,11 @@ class MercyApp
     private ?string $instance = null;
 
     /**
+     * Folder of the production build (see withBuild()), null: the scaffold has no build command.
+     */
+    public ?string $buildDir = null;
+
+    /**
      * @param  string  $deploymentDestinationDir  Destination directory
      * @param  string  $configTemplateDir         config templates used for this process
      * @param  string  $configDir                 final configs used for this process (generated from the project)
@@ -66,6 +71,41 @@ class MercyApp
     }
 
     /**
+     * Adds the build of the production image ("./mercy build") to runDev(), built in its own folder, e.g.
+     * ->withBuild(__DIR__.'/storage/docker-builds/prod-build')
+     *
+     * @param  string  $buildDir
+     *
+     * @return $this
+     */
+    public function withBuild(string $buildDir): static
+    {
+        $this->buildDir = $buildDir;
+
+        return $this;
+    }
+
+    /**
+     * Folder the build works in: the build folder, or the destination of runDevBuildToProd() (old build.php).
+     *
+     * @return string
+     */
+    public function buildDestinationDir(): string
+    {
+        return $this->buildDir ?? $this->deploymentDestinationDir;
+    }
+
+    /**
+     * How the user calls this tool, for hints in messages (e.g. "./mercy").
+     *
+     * @return string
+     */
+    public static function command(): string
+    {
+        return './'.basename((string) ($_SERVER['argv'][0] ?? 'mercy'));
+    }
+
+    /**
      * Writes the merged project configs into the config dir. Called before every deployment command.
      *
      * @return void
@@ -79,14 +119,14 @@ class MercyApp
         if (!is_dir($this->projectDir)) {
             throw new Exception(sprintf("No project found in '%s'. Clone your project repository there%s.",
                 $this->projectDir,
-                is_dir($this->getProjectTemplateDir()) ? ' or create a new one with "php mercy.php project:init"' : ''));
+                is_dir($this->getProjectTemplateDir()) ? ' or create a new one with "'.self::command().' project:init"' : ''));
         }
 
         $project = $this->projectConfig();
         if ($project->instance === null && ($instances = $project->instances())) {
-            throw new Exception(sprintf("This project has instances (%s). Choose the one of this installation once (in a terminal it asks): php %s %s --instance=<name>",
+            throw new Exception(sprintf("This project has instances (%s). Choose the one of this installation once (in a terminal it asks): %s %s --instance=<name>",
                 implode(', ', $instances),
-                basename($_SERVER['SCRIPT_NAME'] ?? 'mercy.php'),
+                self::command(),
                 $_SERVER['argv'][1] ?? '<command>'));
         }
         $project->apply($this->projectStages, $this->configDir);
@@ -102,7 +142,7 @@ class MercyApp
         $messages = $project->warnings();
         foreach (array_keys($this->projectStages) as $stage) {
             foreach ($project->unknownKeys($stage) as $key => $label) {
-                $messages[] = "Unknown config key '$key' in $label (typo or old name? see: php mercy.php config --all).";
+                $messages[] = "Unknown config key '$key' in $label (typo or old name? see: ".self::command()." config --all).";
             }
         }
         foreach (array_unique($messages) as $message) {
@@ -181,7 +221,7 @@ class MercyApp
                 InputOption::VALUE_REQUIRED,
                 'Instance of the project (config/instances/<name>.yaml), remembered in project/'.self::INSTANCE_FILE,
                 null,
-                // tab completion (./mercy.php install --instance=<tab>), installed by host:setup
+                // tab completion (./mercy install --instance=<tab>), installed by host:setup
                 fn(): array => $this->instances()));
 
         return $console;
@@ -210,6 +250,9 @@ class MercyApp
         $console->addCommand(new ConfigShowCommand($this));
         $console->addCommand(new DestroyCommand($this));
         $console->addCommand(new HostSetupCommand($this));
+        if ($this->buildDir !== null) {
+            $console->addCommand(new BuildProdEnvCommand($this));
+        }
 
         return $console->run();
     }
@@ -217,11 +260,13 @@ class MercyApp
     /**
      * @return int
      * @throws Exception
+     * @deprecated since 2.1: use runDev() with withBuild() ("./mercy build").
      */
     public function runDevBuildToProd(): int
     {
         $console = $this->console('Dev Deployment CLI Tool');
-        $console->addCommand(new BuildProdEnvCommand($this));
+        // old entry point build.php: the build command keeps its old name "create" as alias
+        $console->addCommand(new BuildProdEnvCommand($this)->setAliases(['create']));
         $console->addCommand(new ConfigShowCommand($this));
         $console->addCommand(new HostSetupCommand($this));
 

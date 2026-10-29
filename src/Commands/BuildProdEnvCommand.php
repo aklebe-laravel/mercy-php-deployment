@@ -12,7 +12,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-#[AsCommand(name: 'create', description: 'Build the production docker image.', help: 'Build the docker image for production stage.')]
+#[AsCommand(name: 'build', description: 'Build the production docker image.', help: 'Build the docker image for production stage.')]
 class BuildProdEnvCommand extends BaseCommand
 {
     /**
@@ -30,7 +30,7 @@ class BuildProdEnvCommand extends BaseCommand
     protected function getDeploymentSteps(DockerProcessDeployment|SailProcessDeployment $deployment): array
     {
         $devConfigSource = $this->app->configDir;
-        $buildDestination = $this->app->deploymentDestinationDir;
+        $buildDestination = $this->app->buildDestinationDir();
         $dockerfilePath = 'docker/app/Dockerfile';
         // Where the yamls must be inside the build folder so that `mercy:app require` finds them.
         $buildConfigDestination = $buildDestination.'/storage/app/last-setup';
@@ -46,7 +46,7 @@ class BuildProdEnvCommand extends BaseCommand
                 'task'   => function () use ($deployment): bool {
 
                     // init setup from this location (probably dev env)
-                    $deployment->initSetup($this->app->deploymentDestinationDir, $this->app->configTemplateDir, $this->app->configDir);
+                    $deployment->initSetup($this->app->buildDestinationDir(), $this->app->configTemplateDir, $this->app->configDir);
 
                     return true;
                 },
@@ -63,7 +63,8 @@ class BuildProdEnvCommand extends BaseCommand
                 'name'  => 'registry_login',
                 'label' => 'Checking the docker registry login',
                 'task'  => fn(): bool => !$deployment->getConfigValue('setup.build_steps.use_registry', true)
-                                         || $deployment->hostSetup()->registryLogin(true),
+                                         || $deployment->hostSetup()
+                                             ->registryLogin(true),
             ],
             [
                 'name'  => 'check_host_php',
@@ -250,7 +251,7 @@ class BuildProdEnvCommand extends BaseCommand
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $deployment = new SailProcessDeployment();
-        $deployment->initSetup($this->app->deploymentDestinationDir, $this->app->configTemplateDir, $this->app->configDir);
+        $deployment->initSetup($this->app->buildDestinationDir(), $this->app->configTemplateDir, $this->app->configDir);
 
         $steps = $this->getDeploymentSteps($deployment);
         if ($this->checkInfoOption($input, $deployment)) {

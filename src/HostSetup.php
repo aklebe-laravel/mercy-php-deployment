@@ -48,9 +48,9 @@ final class HostSetup
     }
 
     /**
-     * Installs the bash completion of the running script (e.g. mercy.php) for this user, so commands and
-     * values like "--instance=" complete with <tab>: ./mercy.php install --instance=<tab>
-     * Works with "./mercy.php" (shebang, executable), not with "php mercy.php" (bash completes "php" then).
+     * Installs the bash completion of the running script ("mercy") for this user, so commands and
+     * values like "--instance=" complete with <tab>: ./mercy install --instance=<tab>
+     * Works with "./mercy" (shebang, executable), not with "php mercy" (bash completes "php" then), like artisan.
      * Loaded by the package bash-completion in every new terminal. Never fails the setup.
      *
      * @return bool
@@ -59,7 +59,8 @@ final class HostSetup
     {
         $script = basename((string) ($_SERVER['argv'][0] ?? ''));
         $template = dirname((string) new \ReflectionClass(\Symfony\Component\Console\Application::class)->getFileName()).'/Resources/completion.bash';
-        if (!preg_match('/^[\w.-]+\.php$/', $script) || !is_file($template)) {
+        // only for the Mercy entry point (not e.g. for phpunit running the tests)
+        if (!preg_match('/^mercy(\.php)?$/', $script) || !is_file($template)) {
             return true;
         }
 

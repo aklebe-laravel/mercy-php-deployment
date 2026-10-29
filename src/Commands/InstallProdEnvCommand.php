@@ -57,7 +57,15 @@ class InstallProdEnvCommand extends BaseCommand
                 // a private image needs a login, the tool asks in a terminal
                 'name'  => 'registry_login',
                 'label' => 'Checking the docker registry login',
-                'task'  => fn(): bool => $deployment->hostSetup()->registryLogin(false),
+                'task'  => fn(): bool => $deployment->hostSetup()
+                    ->registryLogin(false),
+            ],
+            [
+                // ./mercy install --instance=<tab> (see HostSetup::shellCompletion())
+                'name'  => 'shell_completion',
+                'label' => 'Tab completion (bash)',
+                'task'  => fn(): bool => $deployment->hostSetup()
+                    ->shellCompletion(),
             ],
             [
                 'name'  => 'pull_docker_image',
@@ -70,11 +78,11 @@ class InstallProdEnvCommand extends BaseCommand
                 'task'  => fn(): bool => $deployment->fetchReleaseFiles($deployment->deploymentDestinationRootPath),
             ],
             [
-                'name'  => 'prepare_env',
+                'name'   => 'prepare_env',
                 // also when resuming at a later step (quick, repeatable): prepares what the later steps use, e.g. a fixed secret
                 'always' => true,
-                'label' => 'Preparing .env',
-                'task'  => fn(): bool => $deployment->prepareEnvFile('setup-production.env', $deployment->deploymentDestinationRootPath.'/.env'),
+                'label'  => 'Preparing .env',
+                'task'   => fn(): bool => $deployment->prepareEnvFile('setup-production.env', $deployment->deploymentDestinationRootPath.'/.env'),
             ],
             // No "sync_ssh" step in production: the image contains all modules, no git access needed.
             [

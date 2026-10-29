@@ -20,7 +20,7 @@ use Symfony\Component\Process\Process as SymfonyProcess;
  * and, only with --files, the files of the folder.
  *
  * Safety:
- * - works on the folder of mercy.php, never on the current working dir
+ * - works on the folder of the mercy script, never on the current working dir
  * - the docker project name comes from "docker compose config" (the real COMPOSE_PROJECT_NAME of the .env)
  * - the user has to type that name to confirm (no confirmation in non-interactive mode without --force)
  * - only images built for this project are removed by default (--images also removes the pulled ones)
@@ -61,7 +61,7 @@ class DestroyCommand extends Command
         $withFiles = (bool) $input->getOption('files');
 
         if (!$this->isMercyRoot($root)) {
-            $io->error("'$root' does not look like a Mercy folder (mercy.php and compose.yaml expected), nothing changed.");
+            $io->error("'$root' does not look like a Mercy folder (mercy and compose.yaml expected), nothing changed.");
 
             return Command::FAILURE;
         }
@@ -128,7 +128,8 @@ class DestroyCommand extends Command
     private function isMercyRoot(string $root): bool
     {
         return $root !== '' && $root !== '/' && $root !== (string) realpath((string) getenv('HOME'))
-               && is_file("$root/mercy.php")
+               // "mercy.php": scaffolds and installers before 2.1
+               && (is_file("$root/mercy") || is_file("$root/mercy.php"))
                && is_file("$root/compose.yaml");
     }
 

@@ -27,7 +27,7 @@ class SailProcess extends Process
         if (filter_var($this->getConfigValue('setup.kernel.dev_mode', false), FILTER_VALIDATE_BOOLEAN)) {
             return true;
         }
-        $this->error("The dev stage has 'kernel.dev_mode' not set to true. Set 'kernel.dev_mode: true' in project/config/dev.yaml "."(check it with: php mercy.php config kernel).");
+        $this->error("The dev stage has 'kernel.dev_mode' not set to true. Set 'kernel.dev_mode: true' in project/config/dev.yaml "."(check it with: ./mercy config kernel).");
 
         return false;
     }
