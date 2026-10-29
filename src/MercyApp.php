@@ -84,7 +84,7 @@ class MercyApp
 
         $project = $this->projectConfig();
         if ($project->instance === null && ($instances = $project->instances())) {
-            throw new Exception(sprintf("This project has instances (%s). Choose the one of this installation once: php %s %s --instance=<name>",
+            throw new Exception(sprintf("This project has instances (%s). Choose the one of this installation once (in a terminal it asks): php %s %s --instance=<name>",
                 implode(', ', $instances),
                 basename($_SERVER['SCRIPT_NAME'] ?? 'mercy.php'),
                 $_SERVER['argv'][1] ?? '<command>'));
@@ -118,6 +118,16 @@ class MercyApp
     public function projectConfig(): ProjectConfig
     {
         return new ProjectConfig((string) $this->projectDir, null, $this->currentInstance());
+    }
+
+    /**
+     * Instances of the project (config/instances/*.yaml), empty without project.
+     *
+     * @return list<string>
+     */
+    public function instances(): array
+    {
+        return $this->projectDir !== null && is_dir($this->projectDir) ? new ProjectConfig($this->projectDir)->instances() : [];
     }
 
     /**
@@ -166,9 +176,13 @@ class MercyApp
     {
         $console = new Application($name, '1.0.0');
         $console->getDefinition()
-            ->addOption(new InputOption('instance', null, InputOption::VALUE_REQUIRED, 'Instance of the project (config/instances/<name>.yaml), remembered in project/'.self::INSTANCE_FILE, null,
+            ->addOption(new InputOption('instance',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Instance of the project (config/instances/<name>.yaml), remembered in project/'.self::INSTANCE_FILE,
+                null,
                 // tab completion (./mercy.php install --instance=<tab>), installed by host:setup
-                fn(): array => $this->projectDir !== null && is_dir($this->projectDir) ? new ProjectConfig($this->projectDir)->instances() : []));
+                fn(): array => $this->instances()));
 
         return $console;
     }

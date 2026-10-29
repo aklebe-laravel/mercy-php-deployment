@@ -9,6 +9,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Output\OutputInterface;
+use function Laravel\Prompts\select;
 
 class BaseCommand extends Command
 {
@@ -48,6 +49,9 @@ class BaseCommand extends Command
     {
         if ($input->hasOption('instance') && ($instance = $input->getOption('instance'))) {
             $this->app->selectInstance((string) $instance);
+        } elseif ($input->isInteractive() && $this->app->currentInstance() === null && ($instances = $this->app->instances())) {
+            // first command of this installation: choose once in the terminal, remembered in project/.instance
+            $this->app->selectInstance((string) select('Instance of this installation (config/instances/*.yaml)', $instances));
         }
         $this->app->applyProject();
     }
