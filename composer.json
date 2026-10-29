@@ -25,6 +25,11 @@
     "suggest": {
         "ext-zip": "Needed to create a bundle (build_steps.create_bundle)."
     },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "2.x-dev"
+        }
+    },
     "autoload": {
         "psr-4": {
             "AklebeLaravel\\MercyPhpDeployment\\": "src/"
