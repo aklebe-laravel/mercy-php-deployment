@@ -1,0 +1,6 @@
+# Mercy defaults of the dev stage (scaffold: php mercy.php install|update): after the product base,
+# before the project dev.yaml. Every key here must also be in build.yaml (the build extends dev.yaml).
+kernel:
+  env: "local"
+  # composer with dev packages, no "artisan optimize"
+  dev_mode: true

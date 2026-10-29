@@ -1,0 +1,160 @@
+# kernel setup
+kernel:
+  # used for image name and container prefix
+  name: "proxtop"
+
+  # image version (image build)
+  version: "2.0.1"
+
+  # env like APP_ENV (local, dev|development, production, staging|int, testing)
+  # default 'production'
+  env: "local"
+
+  # for some cases like npm
+  ip: "127.0.0.1"
+
+  # Your domain only like "my-domain.com" without http://
+  domain: "prox-top.dev.example.com"
+
+  # name of the app container service name
+  service: "mercy.app"
+
+  # current activated theme
+  theme: "central-ui"
+
+  # (default: false)
+  # true: show all console output instead of clean progress bar
+  debug: true
+
+  # determine the composer (install/update/optimize/--no-dev/...), run "artisan optimize"
+  dev_mode: true
+
+  # add VPN_... vars
+  add_vpn_env: true
+
+git:
+  source: "gitea@gitea.example.com"
+  namespace: "aklebe-laravel"
+  registry_source: "gitea.example.com"
+  registry_namespace: "aklebe-laravel"
+
+# special quotes for dollar signs
+env_strict_literals:
+  #  - '*_PASSWORD'
+  - DB_PASSWORD
+  - REDIS_PASSWORD
+  - MAIL_PASSWORD
+  - NPM_API_PASSWORD
+
+provisioning:
+  # true: use prominent high-value config values (like name, domain, git_host, ...) to generate same key for multiple setups with same values
+  # otherwise, each setup run generates a new unique
+  smart_app_instance_key: true
+
+  # for multiple project instances use different start values to prevent port collisions
+  auto_port_start: 27100
+
+  # define which vars are affected by auto_port_start
+  auto_port_env:
+    - APP_PORT
+    - FORWARD_DB_PORT
+    - FORWARD_REDIS_PORT
+    - FORWARD_MAILPIT_PORT
+    - FORWARD_MAILPIT_DASHBOARD_PORT
+    - VITE_PORT
+    - REVERB_SERVER_PORT
+
+# optional set resulted '.env' filename, (default: '.env')
+#  env_target: '.env.test123'
+# Repositories for modules (Build-time only)
+requires:
+  - vendor: "aklebe-laravel"
+    type: "module"
+    branch: "master"
+    dev_mode: true
+    branch_prefix: "dev-"
+    # Use Single quotes here or vars get corrupt
+    repository: 'gitea@gitea.example.com:${{module_vendor_name}}/${{module_snake_name_git}}.git'
+    names:
+      - "system-base-module"
+      - "deploy-env-module"
+      - "website-base-module"
+      - "acl-module"
+      - "data-table-module"
+      - "form-module"
+      - "central-ui-module"
+
+  - vendor: "aklebe-laravel"
+    type: "theme"
+    branch: "master"
+    dev_mode: true
+    branch_prefix: "dev-"
+    # Use Single quotes here or vars get corrupt
+    repository: 'gitea@gitea.example.com:${{module_vendor_name}}/${{module_snake_name_git}}.git'
+    names:
+      - "central-ui-theme"
+      - "mercy-blank-theme"
+
+# Build-specific cleanup and optimization
+build_steps:
+  dev_mode: false
+  create_bundle: false
+  use_registry: true
+  optimize_composer: true
+  build_assets: true
+
+net:
+  dns1: "192.0.2.4"
+  dns2: "192.0.2.5"
+
+unit_test:
+  my_double: 1.234
+
+npm:
+  url: "http://localhost:81/api"
+  user: "admin@example.com"
+  password: '$MySpecialPassword9000'
+  hosts:
+    - domain: '${APP_DOMAIN}'
+      advanced_block: app
+      forward_host: '${{host_depend_env}}'
+      forward_port: '${{port_depend_env}}'
+      allow_websocket_upgrade: true
+      caching_enabled: false
+      certificate_id: 11
+      ssl_forced: true
+      http2_support: true
+      hsts_enabled: true
+      hsts_subdomains: false
+    - domain: 'reverb-${APP_DOMAIN}'
+      advanced_block: reverb
+      forward_host: '${{host_depend_env}}'
+      forward_port: '${REVERB_SERVER_PORT}'
+      allow_websocket_upgrade: true
+      caching_enabled: false
+      certificate_id: 11
+      ssl_forced: true
+      http2_support: true
+      hsts_enabled: true
+      hsts_subdomains: false
+
+ssh:
+  docker_dir: ~/.ssh-docker            # optional, this is the default
+  key: ~/.ssh/id_ed25519_deploy        # dedicated deploy key, NOT your personal key
+  known_hosts: # must already be in ~/.ssh/known_hosts of this machine
+    - gitea.example.internal
+    - "[gitea.example.internal]:2222"  # non-standard port syntax
+    - github.com
+
+ldap:
+  enabled: false
+  host: "192.0.2.6"
+  port: "389"
+  username: "cn=ldap-search-user,ou=users,dc=ldap,dc=my-ldap-server"
+  password: "1234567"
+  base_dn: "dc=ldap,dc=my-ldap-server"
+  guid_auth_name: "cn"
+  users_allowed_from_groups: "Members"
+  import_cron: "15 */6 * * *"
+  object_class_groups: "posixGroup"
+  object_class_users: "posixAccount"

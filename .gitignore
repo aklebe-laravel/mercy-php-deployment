@@ -1,0 +1,6 @@
+/vendor/
+.idea
+/tmp*
+.phpunit.cache
+# library: the project that uses it decides the versions (lock rule, roadmap M2)
+/composer.lock

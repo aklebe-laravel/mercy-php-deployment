@@ -1,0 +1,173 @@
+# =====================================================================
+# Mercy defaults: the lowest layer of every project config (all stages).
+# Ships with mercy-php-deployment, so a new version brings new keys with their defaults
+# and no project file has to be changed. Project files contain only what differs.
+#
+# Every key the deployment knows is listed here; "config" warns about keys that are not
+# (typos, old names). "~" means: not set (the key exists, the value is removed after the merge).
+# Maps written as {} accept any keys below them (env, ssh.fingerprints).
+#
+# Show the effective config and where each value comes from: php mercy.php config [--all]
+# =====================================================================
+
+kernel:
+  # product name: docker image (if "image" is not set) and container prefix
+  name: "mercy"
+  # docker image name if it differs from "name" (e.g. "my-product-web")
+  image: ~
+  # release: set in build.yaml (image tag) and prod.yaml (release to run), dev takes it from git
+  version: ~
+  # domain of the instance (without http://), set per instance
+  domain: ~
+  # APP_ENV: local, production, ... (the stage defaults set it)
+  env: "production"
+  # host ip, e.g. for Nginx Proxy Manager ("npm.forward: host")
+  ip: "127.0.0.1"
+  # compose service of the app container
+  service: "mercy.app"
+  # active theme
+  theme: "mercy-blank"
+  # true: full output of every command instead of the step list
+  debug: false
+  # true: composer with dev packages, no "artisan optimize" (dev stage)
+  dev_mode: false
+
+git:
+  # where modules, themes and the scaffold are cloned from: <source>:<namespace>/<repo>.git
+  source: "git@github.com"
+  namespace: "aklebe-laravel"
+  # scaffold url for the build, default: <source>:<namespace>/mercy-scaffold.git
+  scaffold: ~
+  # docker registry of the product image: <registry_source>/<registry_namespace>/<image>:<version>
+  registry_source: "ghcr.io"
+  # the org of your product (owner of the image), not the org of the Mercy packages
+  registry_namespace: ~
+  # git url rewrites this machine gets (host:setup), e.g. GitHub urls fetched from your own Gitea:
+  #   - base: "gitea@git.example.com:aklebe-laravel/"
+  #     instead_of: [ "https://github.com/aklebe-laravel/", "git@github.com:aklebe-laravel/" ]
+  url_rewrites: [ ]
+
+# env values written literally (no "$" expansion), e.g. passwords and API keys
+env_strict_literals:
+  - DB_PASSWORD
+  - REDIS_PASSWORD
+  - MAIL_PASSWORD
+  - NPM_API_PASSWORD
+
+# free env vars of the project or its modules, written 1:1 into the .env after all calculated values
+env: { }
+
+provisioning:
+  # true: the instance key is derived from prominent values (name, domain, ...), the same setup gets the same key
+  smart_app_instance_key: true
+  # first port of the auto ports; use different starts for several instances on one machine
+  auto_port_start: 27000
+  # env vars that get an auto port
+  auto_port_env:
+    - APP_PORT
+    - FORWARD_DB_PORT
+    - FORWARD_REDIS_PORT
+    - FORWARD_MAILPIT_PORT
+    - FORWARD_MAILPIT_DASHBOARD_PORT
+    - VITE_PORT
+    - REVERB_SERVER_PORT
+
+# modules and themes to clone (a project list replaces this one as a whole)
+requires:
+  - vendor: "aklebe-laravel"
+    type: "module"
+    branch: "master"
+    dev_mode: true
+    branch_prefix: "dev-"
+    # single quotes, otherwise the placeholders break
+    repository: 'git@github.com:${{module_vendor_name}}/${{module_snake_name_git}}.git'
+    names:
+      - "system-base-module"
+      - "deploy-env-module"
+      - "website-base-module"
+      - "acl-module"
+      - "data-table-module"
+      - "form-module"
+  - vendor: "aklebe-laravel"
+    type: "theme"
+    branch: "master"
+    dev_mode: true
+    branch_prefix: "dev-"
+    repository: 'git@github.com:${{module_vendor_name}}/${{module_snake_name_git}}.git'
+    names:
+      - "mercy-blank-theme"
+
+# production image (build)
+build_steps:
+  dev_mode: false
+  create_bundle: false
+  use_registry: true
+  optimize_composer: true
+  build_assets: true
+
+# DNS of the containers
+net:
+  dns1: "8.8.8.8"
+  dns2: "1.1.1.1"
+
+# Nginx Proxy Manager: creates/updates the proxy hosts on install and update
+npm:
+  enabled: false
+  url: ""
+  user: ""
+  password: ""
+  # how the proxy reaches the app:
+  #   network: proxy container in the docker network "proxy-gateway" of this machine (container name, port 80)
+  #   host:    proxy on another machine (kernel.ip and APP_PORT)
+  # not set: production "host", otherwise "network"
+  forward: ~
+  hosts:
+    - domain: '${APP_DOMAIN}'
+      advanced_block: app
+      forward_host: '${{host_depend_env}}'
+      forward_port: '${{port_depend_env}}'
+      allow_websocket_upgrade: true
+      caching_enabled: false
+      # id of your certificate in Nginx Proxy Manager
+      certificate_id: 1
+      ssl_forced: true
+      http2_support: true
+      hsts_enabled: true
+      hsts_subdomains: false
+    - domain: 'reverb-${APP_DOMAIN}'
+      advanced_block: reverb
+      forward_host: '${{host_depend_env}}'
+      forward_port: '${REVERB_SERVER_PORT}'
+      allow_websocket_upgrade: true
+      caching_enabled: false
+      certificate_id: 1
+      ssl_forced: true
+      http2_support: true
+      hsts_enabled: true
+      hsts_subdomains: false
+
+ssh:
+  # mounted into the containers, must be outside the build folder
+  docker_dir: ~/.ssh-docker
+  # deploy key of this machine (created by host:setup if missing): containers and the deployment use it
+  key: ~/.ssh/id_ed25519_deploy
+  # git servers, added to ~/.ssh/known_hosts by host:setup (only with a known fingerprint)
+  known_hosts:
+    - github.com
+  # host key fingerprints of other git servers (github.com is built in), e.g.
+  #   git.example.com: 'SHA256:...'   (on the server: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)
+  fingerprints: { }
+
+ldap:
+  enabled: false
+  host: ""
+  port: "389"
+  ssl: true
+  username: ""
+  password: ""
+  base_dn: ""
+  guid_auth_name: "cn"
+  users_allowed_from_groups: ""
+  import_cron: "15 */6 * * *"
+  object_class_groups: "posixGroup"
+  object_class_users: "posixAccount"
