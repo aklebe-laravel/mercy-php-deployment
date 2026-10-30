@@ -1,0 +1,171 @@
+<?php
+declare(strict_types = 1);
+
+namespace AklebeLaravel\MercyPhpDeployment\Commands;
+
+use AklebeLaravel\MercyPhpDeployment\MercyApp;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\Process as SymfonyProcess;
+use Throwable;
+
+/**
+ * "./mercy" without a command: where this installation stands and what to do next.
+ * Only reads (files and "docker compose ps"), no network, so it is quick and safe to run any time.
+ */
+#[AsCommand(name: 'status', description: 'Show project, instance and state of this installation and the next step (default without a command).')]
+class StatusCommand extends Command
+{
+    /**
+     * @param  MercyApp  $app
+     */
+    public function __construct(public MercyApp $app)
+    {
+        parent::__construct();
+    }
+
+    /**
+     * @param  InputInterface   $input
+     * @param  OutputInterface  $output
+     *
+     * @return int
+     */
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $cmd = MercyApp::command();
+        $root = rtrim($this->app->deploymentDestinationDir, '/');
+        $projectDir = $this->app->projectDir;
+        $stage = (string) array_key_first($this->app->projectStages);
+        $rows = [];
+        $next = null;
+
+        // 1) project repository
+        if ($projectDir === null || !is_dir($projectDir)) {
+            $rows[] = ['✖', 'Project', 'no project/ folder'];
+            $next = is_dir($this->app->getProjectTemplateDir()) ? "git clone <your-project-repository> project   (or a new one: $cmd project:init)" : 'git clone <your-project-repository> project';
+
+            return $this->render($output, $rows, $next);
+        }
+
+        // 2) instance of this installation
+        if ($input->hasOption('instance') && ($instance = $input->getOption('instance'))) {
+            try {
+                // only a look, the remembered instance stays
+                $this->app->selectInstance((string) $instance, false);
+            } catch (Throwable $e) {
+                $rows[] = ['✖', 'Instance', $e->getMessage()];
+
+                return $this->render($output, $rows, "$cmd --instance=<tab>");
+            }
+        }
+        $instances = $this->app->instances();
+        $instance = $this->app->currentInstance();
+        if ($instances && $instance === null) {
+            $rows[] = ['✖', 'Instance', 'not chosen yet: '.implode(', ', $instances)];
+
+            return $this->render($output, $rows, "$cmd install --instance=<tab>   (asks in a terminal, remembered in project/".MercyApp::INSTANCE_FILE.')');
+        }
+
+        // 3) config of the stage
+        try {
+            $project = $this->app->projectConfig();
+            $merged = $project->merged($stage);
+            $unknown = count($project->unknownKeys($stage));
+        } catch (Throwable $e) {
+            $rows[] = ['✖', 'Config', $e->getMessage()];
+
+            return $this->render($output, $rows, "fix the project config, then: $cmd config");
+        }
+        $rows[] = ['✔', 'Project', sprintf('%s%s, stage %s', $merged['kernel']['name'] ?? '?', $instance !== null ? ", instance $instance" : '', $stage)];
+        if (!empty($merged['kernel']['domain'])) {
+            $rows[] = ['•', 'Domain', (string) $merged['kernel']['domain']];
+        }
+        if ($unknown > 0) {
+            $rows[] = ['!', 'Config', "$unknown unknown key(s), see: $cmd config --all"];
+        }
+
+        // 4) secrets of this machine
+        $configDir = $project->configDir();
+        if (is_file("$configDir/secrets.example.yaml") && !is_file("$configDir/secrets.yaml")) {
+            // only a hint: the values may come from a versioned *-secrets.yaml as well
+            $rows[] = ['!', 'Secrets', 'no project/config/secrets.yaml (cp project/config/secrets.example.yaml project/config/secrets.yaml)'];
+        }
+
+        // 5) installed and running
+        $env = is_file("$root/.env") ? (string) file_get_contents("$root/.env") : null;
+        if ($env === null) {
+            $rows[] = ['✖', 'Installed', 'no .env yet'];
+            $next ??= "$cmd install";
+        } else {
+            $rows[] = ['✔', 'Installed', '.env exists'];
+            $running = $this->runningServices($root);
+            if ($running === null) {
+                $rows[] = ['!', 'Containers', 'docker is not reachable'];
+                $next ??= 'start docker, then: '.$cmd.' update';
+            } elseif (!$running) {
+                $rows[] = ['✖', 'Containers', 'not running'];
+                $next ??= "$cmd update";
+            } else {
+                $rows[] = ['✔', 'Containers', implode(', ', $running)];
+                if (preg_match('/^APP_URL=["\']?([^"\'\s]+)/m', $env, $m)) {
+                    $rows[] = ['•', 'URL', $m[1]];
+                }
+            }
+        }
+
+        $next ??= "after git pull or config changes: $cmd update".($this->app->buildDir !== null ? "   production image: $cmd build" : '');
+
+        return $this->render($output, $rows, $next);
+    }
+
+    /**
+     * @param  string  $root
+     *
+     * @return list<string>|null running services, null if docker does not answer
+     */
+    private function runningServices(string $root): ?array
+    {
+        if (!is_file("$root/compose.yaml")) {
+            return [];
+        }
+        try {
+            $process = new SymfonyProcess(['docker', 'compose', 'ps', '--status', 'running', '--services'], $root, null, null, 10.0);
+            $process->run();
+        } catch (Throwable) {
+            return null;
+        }
+        if (!$process->isSuccessful()) {
+            return null;
+        }
+
+        return array_values(array_filter(array_map('trim', explode("\n", $process->getOutput()))));
+    }
+
+    /**
+     * @param  OutputInterface                               $output
+     * @param  list<array{0: string, 1: string, 2: string}>  $rows
+     * @param  string|null                                   $next
+     *
+     * @return int
+     */
+    private function render(OutputInterface $output, array $rows, ?string $next): int
+    {
+        $colors = ['✔' => 'green', '✖' => 'red', '!' => 'yellow', '•' => 'gray'];
+        $output->writeln('');
+        foreach ($rows as [$mark, $label, $text]) {
+            $output->writeln(sprintf(' <fg=%s>%s</> %-11s %s', $colors[$mark] ?? 'default', $mark, $label, OutputFormatter::escape($text)));
+        }
+        if ($next !== null) {
+            $output->writeln('');
+            $output->writeln(' <info>Next:</info> '.OutputFormatter::escape($next));
+        }
+        $output->writeln('');
+        $output->writeln(sprintf(' <fg=gray>All commands: %s list</>', MercyApp::command()));
+        $output->writeln('');
+
+        return Command::SUCCESS;
+    }
+}

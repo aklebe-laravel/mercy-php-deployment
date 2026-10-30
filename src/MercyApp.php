@@ -9,6 +9,7 @@ use AklebeLaravel\MercyPhpDeployment\Commands\HostSetupCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\InstallDevEnvCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\InstallProdEnvCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\ProjectInitCommand;
+use AklebeLaravel\MercyPhpDeployment\Commands\StatusCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\UpdateDevEnvCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\UpdateProdEnvCommand;
 use Exception;
@@ -223,6 +224,10 @@ class MercyApp
                 null,
                 // tab completion (./mercy install --instance=<tab>), installed by host:setup
                 fn(): array => $this->instances()));
+
+        // "./mercy" without a command: state of this installation and the next step
+        $console->addCommand(new StatusCommand($this));
+        $console->setDefaultCommand('status');
 
         return $console;
     }

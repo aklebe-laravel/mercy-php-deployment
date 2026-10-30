@@ -11,7 +11,9 @@ Used by:
 | [mercy-scaffold](https://github.com/aklebe-laravel/mercy-scaffold)   | `mercy` (`MercyApp::runDev()` with `withBuild()`) | `install`, `update`, `build` |
 | [mercy-installer](https://github.com/aklebe-laravel/mercy-installer) | `mercy` (`MercyApp::runProd()`)                   | `install`, `update`          |
 
-The scripts have no extension, like Laravel's `artisan`: `./mercy install` or `php mercy install`. (Before 2.1: `mercy.php` and `build.php create`; `runDevBuildToProd()` still works, deprecated.)
+The scripts have no extension, like Laravel's `artisan`: `./mercy install` or `php mercy install`.
+`./mercy` without a command (`status`) shows project, instance and state of this installation and the next step. (Before 2.1: `mercy.php` and `build.php create`; `runDevBuildToProd()` still works,
+deprecated.)
 
 ```php
 use AklebeLaravel\MercyPhpDeployment\MercyApp;
@@ -19,6 +21,7 @@ use AklebeLaravel\MercyPhpDeployment\MercyApp;
 // destination, config templates, user configs
 new MercyApp(__DIR__, __DIR__.'/resources/setup', __DIR__.'/storage/app/last-setup')
     ->withProject(__DIR__.'/project', ['dev' => 'setup.yaml', 'build' => 'setup-build.yaml'])
+    ->withBuild(__DIR__.'/storage/docker-builds/prod-build')   // adds "build"
     ->runDev();
 ```
 
@@ -36,6 +39,7 @@ Every command is a list of named steps. `--info` lists them, a step number or na
 | Command                | Steps                                                                                                                                                                                                                                                                                                                                                                                               |
 |------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | dev `project:init`     | creates `project/` from `resources/setup/project`                                                                                                                                                                                                                                                                                                                                                   |
+| all `status`           | default without a command: project, instance, config, secrets, installed, containers, URL and the next step (only reads, no network)                                                                                                                                                                                                                                                                |
 | all `config`           | shows the effective project config of a stage                                                                                                                                                                                                                                                                                                                                                       |
 | dev/build `host:setup` | prepares git and ssh of this machine (also step `setup_host` of install, update, build), see below                                                                                                                                                                                                                                                                                                  |
 | dev/prod `destroy`     | removes the docker project (database!); `--files` also the folder, `--images` the pulled images                                                                                                                                                                                                                                                                                                     |
