@@ -3,6 +3,7 @@
 namespace AklebeLaravel\MercyPhpDeployment\Commands;
 
 use AklebeLaravel\MercyPhpDeployment\DockerProcessDeployment;
+use AklebeLaravel\MercyPhpDeployment\LibraryBranch;
 use AklebeLaravel\MercyPhpDeployment\SailProcessDeployment;
 use Exception;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -34,19 +35,19 @@ class UpdateDevEnvCommand extends BaseCommand
         // sync_npm is repeated: ports, ip or npm.forward may have changed, the proxy has to follow.
         return array_filter([
             [
-                'name'  => 'check_dev_stage',
+                'name'   => 'check_dev_stage',
                 // also when resuming at a later step (quick, repeatable): prepares what the later steps use, e.g. a fixed secret
                 'always' => true,
-                'label' => 'Checking the dev stage ...',
-                'task'  => fn(): bool => $deployment->checkDevStage(),
+                'label'  => 'Checking the dev stage ...',
+                'task'   => fn(): bool => $deployment->checkDevStage(),
             ],
             [
                 // git url rewrites, known_hosts, deploy key and access of this machine (see HostSetup)
-                'name'  => 'setup_host',
+                'name'   => 'setup_host',
                 // also when resuming at a later step (quick, repeatable): prepares what the later steps use, e.g. a fixed secret
                 'always' => true,
-                'label' => 'Preparing this machine (git, ssh) ...',
-                'task'  => fn(): bool => $deployment->setupHost(),
+                'label'  => 'Preparing this machine (git, ssh) ...',
+                'task'   => fn(): bool => $deployment->setupHost(),
             ],
             [
                 'name'  => 'copy_root_files',
@@ -54,16 +55,22 @@ class UpdateDevEnvCommand extends BaseCommand
                 'task'  => fn(): bool => $deployment->copyDirectory($this->app->deploymentDestinationDir.'/install/project-root', $deployment->deploymentDestinationRootPath),
             ],
             [
-                'name'  => 'copy_ssh',
+                'name'   => 'copy_ssh',
                 // also when resuming at a later step (quick, repeatable): prepares what the later steps use, e.g. a fixed secret
                 'always' => true,
-                'label' => 'Copy ssh stuff ...',
-                'task'  => fn(): bool => $deployment->syncDockerSsh(),
+                'label'  => 'Copy ssh stuff ...',
+                'task'   => fn(): bool => $deployment->syncDockerSsh(),
             ],
             [
                 'name'  => 'clone_dependencies',
                 'label' => 'Cloning missing core modules & theme ...',
                 'task'  => fn(): bool => $deployment->deployBaseModulesAndTheme(),
+            ],
+            [
+                // git.branch(es) in project/config/local.yaml: libraries (git repositories of composer.json) from test branches, see LibraryBranch
+                'name'  => 'library_branch',
+                'label' => 'Test branches of the libraries ...',
+                'task'  => fn(): bool => new LibraryBranch($deployment)->sync($deployment->deploymentDestinationRootPath),
             ],
             [
                 // install, not update: the composer.lock of the scaffold decides the versions
@@ -73,11 +80,11 @@ class UpdateDevEnvCommand extends BaseCommand
             ],
             [
                 // project name, instance key and ports stay as they are (sticky env values)
-                'name'  => 'setup_env',
+                'name'   => 'setup_env',
                 // also when resuming at a later step (quick, repeatable): prepares what the later steps use, e.g. a fixed secret
                 'always' => true,
-                'label' => 'Setup Environment Configs ...',
-                'task'  => fn(): bool => $deployment->prepareEnvFile('setup-local.env', $deployment->deploymentDestinationRootPath.'/.env'),
+                'label'  => 'Setup Environment Configs ...',
+                'task'   => fn(): bool => $deployment->prepareEnvFile('setup-local.env', $deployment->deploymentDestinationRootPath.'/.env'),
             ],
             [
                 // with docker cache: fast if the Dockerfile did not change

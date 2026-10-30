@@ -346,7 +346,8 @@ class SailProcess extends Process
     /**
      * Clones the Mercy core modules and the theme. They are needed before anything else,
      * because "artisan mercy:app require" (which clones all other modules) lives in DeployEnv.
-     * The theme is the first theme of "setup.requires", otherwise the core default theme.
+     * The theme is the first theme of "setup.requires" (then "setup.base_requires"), otherwise the core default theme.
+     * Each one starts at the ref of initialRef() (tag, branch).
      *
      * @return bool
      * @throws Exception
@@ -378,7 +379,9 @@ class SailProcess extends Process
             }
 
             $path = "$gitPath:$gitNamespace/{$gitClone['name']}.git";
-            if (!$this->run(['git', 'clone', $path, '.'], $targetDir)) {
+            // the same start as "mercy:app require" would choose: dev branch, release tag or branch of its block
+            $ref = $this->initialRef($gitClone['name'], $path);
+            if (!$this->run(['git', 'clone', ...($ref !== null ? ['--branch', $ref] : []), $path, '.'], $targetDir)) {
                 $this->error("Unable to clone '$path' into $targetDir");
 
                 return false;

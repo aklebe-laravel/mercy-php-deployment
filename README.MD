@@ -99,7 +99,7 @@ Selected `setup.yaml` keys:
 - **Keys and logins of a machine** (who needs what):
 
   | For                                         | What                                       | Where to add it                         | Done by                              |
-        |---------------------------------------------|--------------------------------------------|-----------------------------------------|--------------------------------------|
+            |---------------------------------------------|--------------------------------------------|-----------------------------------------|--------------------------------------|
   | git of the deployment (modules, composer)   | deploy key `ssh.key`                       | SSH keys at Gitea/GitHub                | `host:setup` creates and tests it    |
   | your own git commands (`git clone project`) | your key `~/.ssh/id_ed25519`               | SSH keys at Gitea/GitHub                | you; on servers use it as `ssh.key`  |
   | the git server is the right one             | host key fingerprint                       | `ssh.fingerprints` of the network       | once per network                     |
@@ -153,6 +153,15 @@ Selected `setup.yaml` keys:
        `~/.bash_completion` that loads it (bash-completion loads its folder only for commands found by name,
        not for `./mercy`), so commands and instances complete in a new terminal: `./mercy install --instance=<tab>`.
        Only with `./mercy` (shebang, executable); with `php mercy` bash completes `php`, like with `php artisan`.
+- **Releases and branches** (examples: scaffold README "Workflows"): what is checked out in the dev folder stays (a clone
+  on a branch keeps it, the IDE switches branches). New clones start with `git.branch` / `git.branches.<repo>` (if the
+  remote has it), otherwise with the release (`version` of their block, e.g. `^2.0` in `base_requires`) or its branch.
+  Libraries (git repositories in the scaffold's `composer.json`) keep their release unless `git.branches.<repo>`
+  (cloned to `storage/app/library-branch/`) or `git.library_paths.<repo>` (a folder, copied into `vendor`) says
+  otherwise: `LibraryBranch` writes a `composer.local.json` with a path repository and a fixed version of the same
+  major (2.99.0), so `^2.x` still matches. These settings belong into `project/config/local.yaml` (not versioned).
+  `./mercy build` uses releases (latest scaffold tag, versions of the requires, `composer.lock`) and ignores them;
+  `build_steps.branch` builds from a branch instead, with the image tag `<version>-<branch>`.
 - **Git url rewrites in containers:** `copy_ssh` writes the machine's `insteadOf` rewrites to
   `<ssh.docker_dir>/gitconfig`; the scaffold's `start-container` includes it for the `sail` user.
 - **APP_KEY survives:** the config env replaces the target env on every run, `APP_KEY` (written by `key:generate`

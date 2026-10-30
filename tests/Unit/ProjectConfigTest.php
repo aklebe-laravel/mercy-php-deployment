@@ -294,6 +294,20 @@ class ProjectConfigTest extends TestCase
     /**
      * @return void
      */
+    public function test_localYaml_lastLayerAfterSecrets(): void
+    {
+        $this->write('setup.yaml', ['git' => ['branch' => null], 'ldap' => ['password' => '']]);
+        $this->write('secrets.yaml', ['ldap' => ['password' => 'secret']]);
+        $this->write('local.yaml', ['git' => ['branch' => 'feature-x'], 'ldap' => ['password' => 'local']]);
+        $project = $this->project();
+
+        $this->assertSame(['setup.yaml', 'secrets.yaml', 'local.yaml'], array_keys($project->layers('dev')));
+        $this->assertSame(['git' => ['branch' => 'feature-x'], 'ldap' => ['password' => 'local']], $project->merged('dev'));
+    }
+
+    /**
+     * @return void
+     */
     public function test_instance_unknown_throwsExceptionWithList(): void
     {
         mkdir($this->dir.'/project/config/instances');

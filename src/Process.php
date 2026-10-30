@@ -1296,6 +1296,165 @@ class Process
     }
 
     /**
+     * Dev branches and library paths of this machine (git.branch, git.branches, git.library_paths,
+     * usually in project/config/local.yaml).
+     *
+     * @return list<string> e.g. ['feature-x', 'acl-module: feature-y', 'mercy-php-deployment: ../MercyPhpDeployment']
+     */
+    public function testBranches(): array
+    {
+        $list = [];
+        if (is_string($branch = $this->getConfigValue('setup.git.branch')) && $branch !== '') {
+            $list[] = $branch;
+        }
+        foreach (['setup.git.branches', 'setup.git.library_paths'] as $key) {
+            foreach ((array) ($this->getConfigValue($key, []) ?? []) as $repo => $value) {
+                $list[] = "$repo: $value";
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * Ref a new clone of a module or theme starts with:
+     * 1) its dev branch (git.branches.<name>, otherwise git.branch) if the remote has it,
+     * 2) the highest tag matching "version" of its block in requires/base_requires,
+     * 3) the branch of that block.
+     * Null: the default branch of the remote.
+     *
+     * @param  string  $name  repo name, e.g. "system-base-module"
+     * @param  string  $url
+     *
+     * @return string|null
+     */
+    public function initialRef(string $name, string $url): ?string
+    {
+        foreach (array_filter([$this->getConfigValue("setup.git.branches.$name"), $this->getConfigValue('setup.git.branch')]) as $branch) {
+            if (trim((string) $this->capture(['git', 'ls-remote', '--heads', $url, "refs/heads/$branch"], null, 30.0)) !== '') {
+                return (string) $branch;
+            }
+        }
+        $blocks = [...(array) ($this->getConfigValue('setup.requires', []) ?? []), ...(array) ($this->getConfigValue('setup.base_requires', []) ?? [])];
+        foreach ($blocks as $block) {
+            if (!in_array($name, (array) data_get($block, 'names', []), true)) {
+                continue;
+            }
+            if ($version = (string) data_get($block, 'version', '')) {
+                return $this->latestTag($url, $version);
+            }
+
+            return ($branch = (string) data_get($block, 'branch', '')) !== '' ? $branch : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Highest tag of a remote, optionally matching a constraint like "^2.0", "~2.1", "2.1.3" or "*".
+     *
+     * @param  string       $url
+     * @param  string|null  $constraint
+     *
+     * @return string|null
+     */
+    public function latestTag(string $url, ?string $constraint = null): ?string
+    {
+        $tags = [];
+        foreach (explode("\n", (string) $this->capture(['git', 'ls-remote', '--tags', '--refs', $url], null, 30.0)) as $line) {
+            if (preg_match('#refs/tags/(v?(\d+\.\d+\.\d+))$#', trim($line), $m) && ($constraint === null || self::matchesVersion($m[2], $constraint))) {
+                $tags[$m[1]] = $m[2];
+            }
+        }
+        uasort($tags, 'version_compare');
+
+        return $tags ? (string) array_key_last($tags) : null;
+    }
+
+    /**
+     * Small composer-like check (releases only): "^2.1" = >=2.1.0 <3.0.0, "~2.1" = >=2.1.0 <2.2.0, "2.1.3", "*".
+     */
+    public static function matchesVersion(string $version, string $constraint): bool
+    {
+        $constraint = trim($constraint);
+        if ($constraint === '*' || $constraint === '') {
+            return true;
+        }
+        if (!preg_match('/^([\^~]?)v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/', $constraint, $m)) {
+            return false;
+        }
+        [, $op, $major, $minor, $patch] = $m + [3 => '', 4 => ''];
+        $min = sprintf('%d.%d.%d', $major, (int) $minor, (int) $patch);
+        $max = match ($op) {
+            '^' => ((int) $major + 1).'.0.0',
+            '~' => $major.'.'.((int) $minor + 1).'.0',
+            default => null,
+        };
+
+        return $max === null ? version_compare($version, $min, '==') : version_compare($version, $min, '>=') && version_compare($version, $max, '<');
+    }
+
+    /**
+     * The build config: releases by default; "build_steps.branch" builds from that branch instead
+     * (git.branch for modules, themes and libraries, image tag "<version>-<branch>").
+     * The dev settings of this machine (git.branch(es), library_paths of local.yaml) never reach the build.
+     *
+     * @param  list<string>  $files  the build config files in the build folder
+     *
+     * @return bool
+     */
+    public function prepareBuildConfig(array $files): bool
+    {
+        foreach ($files as $file) {
+            $config = $this->loadYamlConfig($file);
+            if (!$config) {
+                return false;
+            }
+            $branch = trim((string) data_get($config, 'build_steps.branch', ''));
+            data_set($config, 'git.branch', $branch !== '' ? $branch : null);
+            data_set($config, 'git.branches', []);
+            data_set($config, 'git.library_paths', []);
+            if ($branch !== '') {
+                // a test image never looks like a release
+                $version = trim((string) data_get($config, 'kernel.version', ''));
+                $suffix = trim((string) preg_replace('/[^A-Za-z0-9.]+/', '-', $branch), '-');
+                if ($version !== '' && !str_ends_with($version, "-$suffix")) {
+                    data_set($config, 'kernel.version', "$version-$suffix");
+                }
+            }
+            file_put_contents($file, Yaml::dump($config, 10, 2));
+        }
+
+        return true;
+    }
+
+    /**
+     * Ref of the scaffold for the build: the branch of "build_steps.branch" (if the remote has it, otherwise master),
+     * otherwise the latest release tag.
+     *
+     * @param  string  $branch  build_steps.branch of the build config
+     *
+     * @return string|null null: the default branch
+     */
+    public function buildScaffoldRef(string $branch): ?string
+    {
+        $url = $this->getScaffoldRepository();
+        if (($branch = trim($branch)) !== '') {
+            if (trim((string) $this->capture(['git', 'ls-remote', '--heads', $url, "refs/heads/$branch"], null, 30.0)) !== '') {
+                return $branch;
+            }
+            $this->notice("The scaffold has no branch '$branch', it is built from master.");
+
+            return 'master';
+        }
+        if (($tag = $this->latestTag($url)) === null) {
+            $this->warning('The scaffold has no release tag yet, it is built from its default branch.');
+        }
+
+        return $tag;
+    }
+
+    /**
      * Prepares git and ssh of this machine from the config, see {@see HostSetup}.
      *
      * @return bool
@@ -1671,7 +1830,7 @@ class Process
      */
     public function getFirstRequiredBlockWithThemeNames(): array
     {
-        foreach ($this->getConfigValue('setup.requires', []) as $require) {
+        foreach ([...(array) ($this->getConfigValue('setup.requires', []) ?? []), ...(array) ($this->getConfigValue('setup.base_requires', []) ?? [])] as $require) {
             if (data_get($require, 'type') === 'theme') {
                 if (count(data_get($require, 'names', [])) > 0) {
                     return $require;

@@ -12,7 +12,7 @@ use Symfony\Component\Yaml\Yaml;
  * so a project file contains only what differs:
  *
  *   mercy:setup.yaml (lowest) -> project files the stage inherits (setup.yaml, networks/...)
- *   -> mercy:<stage>.yaml -> project <stage>.yaml -> secrets
+ *   -> mercy:<stage>.yaml -> project <stage>.yaml -> instance -> secrets -> local.yaml
  *
  * The stage defaults sit right before the stage file: they win over the product base (e.g. dev_mode of the
  * dev stage), the stage file wins over them. An instance (one installation, chosen with --instance) comes after
@@ -22,13 +22,14 @@ use Symfony\Component\Yaml\Yaml;
  *   project/config/<stage>.yaml         entry of a stage (dev, build, prod): its differences
  *   project/config/secrets.yaml         passwords and keys of this machine, NOT versioned
  *   project/config/<stage>.secrets.yaml optional, NOT versioned
+ *   project/config/local.yaml           only this machine, only for now (e.g. test branches), NOT versioned
  *
  * Every yaml may inherit other yamls with "extends" (list, paths relative to the file):
  *
  *   extends: [ setup.yaml, networks/home.yaml ]
  *
  * The inherited files come first (in the given order, each with its own "extends"), then the file itself.
- * A stage file without "extends" inherits "setup.yaml". The secrets are merged last.
+ * A stage file without "extends" inherits "setup.yaml". The secrets are merged last, local.yaml after them.
  * The result is written to the config dir (e.g. storage/app/last-setup/setup.yaml), where the deployment reads it.
  *
  * Keys that the defaults do not know are reported by unknownKeys() (typos, old names); keys that were renamed
@@ -42,6 +43,11 @@ final class ProjectConfig
      * Label prefix of the layers that come from the Mercy defaults.
      */
     public const string DEFAULTS_PREFIX = 'mercy:';
+
+    /**
+     * Last layer: changes of this machine for now (e.g. git.branch for tests), not versioned.
+     */
+    public const string LOCAL_FILE = 'local.yaml';
 
     /**
      * Old key => new key. Old project files keep working, with a warning.
@@ -148,7 +154,7 @@ final class ProjectConfig
                 $layers[$this->label($file)] ??= $file;
             }
         }
-        foreach (['secrets.yaml', "$stage.secrets.yaml"] as $name) {
+        foreach (['secrets.yaml', "$stage.secrets.yaml", self::LOCAL_FILE] as $name) {
             if (is_file("$dir/$name")) {
                 $file = (string) realpath("$dir/$name");
                 $layers[$this->label($file)] = $file;

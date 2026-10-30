@@ -3,6 +3,7 @@
 namespace AklebeLaravel\MercyPhpDeployment\Commands;
 
 use AklebeLaravel\MercyPhpDeployment\DockerProcessDeployment;
+use AklebeLaravel\MercyPhpDeployment\LibraryBranch;
 use AklebeLaravel\MercyPhpDeployment\SailProcessDeployment;
 use Exception;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -91,14 +92,16 @@ class BuildProdEnvCommand extends BaseCommand
                 },
             ],
             [
+                // releases: the latest tag of the scaffold; build_steps.branch: that branch (see Process::prepareBuildConfig())
                 'name'  => 'clone_app',
                 'label' => 'Cloning the app',
-                'task'  => fn(): bool => $deployment->run([
-                    'git',
-                    'clone',
-                    $deployment->getScaffoldRepository(),
-                    '.',
-                ], $buildDestination),
+                'task'  => function () use ($deployment, $devConfigSource, $buildDestination): bool {
+                    $buildBranch = (string) data_get($deployment->loadYamlConfig($devConfigSource.'/setup-build.yaml'), 'build_steps.branch', '');
+                    $ref = $deployment->buildScaffoldRef($buildBranch);
+                    $deployment->notice(sprintf('Building %s (scaffold %s).', $buildBranch !== '' ? "from branch '$buildBranch'" : 'the releases', $ref ?? 'default branch'));
+
+                    return $deployment->run(['git', 'clone', ...($ref !== null ? ['--branch', $ref] : []), $deployment->getScaffoldRepository(), '.'], $buildDestination);
+                },
             ],
             [
                 // switches to the build config; also when resuming (after "clone_app" the build folder exists)
@@ -111,6 +114,10 @@ class BuildProdEnvCommand extends BaseCommand
                     // use the "setup-build.yaml" defined in your current env as the "setup.yaml" for the build
                     $deployment->filesystem->copy($devConfigSource.'/setup-build.yaml', $buildConfigDestination.'/setup.yaml', true);
                     $deployment->filesystem->copy($devConfigSource.'/setup-build.yaml', $buildConfigDestination.'/setup-build.yaml', true);
+                    // releases or build_steps.branch, never the dev branches of this machine
+                    if (!$deployment->prepareBuildConfig([$buildConfigDestination.'/setup.yaml', $buildConfigDestination.'/setup-build.yaml'])) {
+                        return false;
+                    }
 
                     // reinit setup with build locations
                     $deployment->initSetup($buildDestination, $buildDestination.'/resources/setup', $buildDestination.'/storage/app/last-setup');
@@ -137,6 +144,12 @@ class BuildProdEnvCommand extends BaseCommand
                 'name'  => 'get_base_requirements',
                 'label' => 'Fetching base modules and theme',
                 'task'  => fn(): bool => $deployment->deployBaseModulesAndTheme(),
+            ],
+            [
+                // build_steps.branch: libraries from that branch (copied into vendor, see LibraryBranch)
+                'name'  => 'library_branches',
+                'label' => 'Libraries of the build branch',
+                'task'  => fn(): bool => new LibraryBranch($deployment)->sync($buildDestination, true, true),
             ],
             [
                 'name'  => 'composer_install_1',

@@ -46,6 +46,17 @@ git:
   #   - base: "gitea@git.example.com:aklebe-laravel/"
   #     instead_of: [ "https://github.com/aklebe-laravel/", "git@github.com:aklebe-laravel/" ]
   url_rewrites: [ ]
+  # dev branch, usually in project/config/local.yaml (not versioned, only this machine), see README "Workflows":
+  # every module and theme that has this branch starts with it, the others with their version/branch of the requires.
+  # Only for new clones and clones on a tag: a clone on a branch keeps it (your IDE switches branches).
+  # Libraries keep their release (see branches, library_paths). Not used by the build, see build_steps.branch.
+  branch: ~
+  # one branch for single repos by name, also for libraries (git repositories of the scaffold's composer.json);
+  # the branch must exist, e.g. acl-module: feature-x, mercy-php-deployment: feature-x
+  branches: { }
+  # libraries from a folder of this machine instead of composer (your own working copy, any branch), by repo name,
+  # path relative to the scaffold, e.g. mercy-php-deployment: ../MercyPhpDeployment (dev only)
+  library_paths: { }
 
 # env values written literally (no "$" expansion), e.g. passwords and API keys
 env_strict_literals:
@@ -72,10 +83,16 @@ provisioning:
     - VITE_PORT
     - REVERB_SERVER_PORT
 
-# modules and themes to clone (a project list replaces this one as a whole)
-requires:
+# modules and themes of the project: only your own (the Mercy base comes with base_requires).
+# An entry here wins over the same name in base_requires. Per block: "version" (tags, e.g. "^1.0") or
+# "branch" with "branch_prefix" (e.g. "dev-" + "master").
+requires: [ ]
+
+# the Mercy base modules and theme, released versions (tags); "git.branch: master" for unreleased ones
+base_requires:
   - vendor: "aklebe-laravel"
     type: "module"
+    version: "^2.0"
     branch: "master"
     dev_mode: true
     branch_prefix: "dev-"
@@ -90,6 +107,7 @@ requires:
       - "form-module"
   - vendor: "aklebe-laravel"
     type: "theme"
+    version: "^2.0"
     branch: "master"
     dev_mode: true
     branch_prefix: "dev-"
@@ -99,6 +117,10 @@ requires:
 
 # production image (build)
 build_steps:
+  # empty: the image is built from releases (latest tag of the scaffold, requires/base_requires, composer.lock).
+  # A branch (e.g. in an instance for a test system): scaffold, modules, themes and libraries from this branch
+  # where they have it, image tag "<version>-<branch>"
+  branch: ~
   dev_mode: false
   create_bundle: false
   use_registry: true
