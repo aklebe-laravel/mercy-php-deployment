@@ -14,10 +14,11 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Process\Process as SymfonyProcess;
+use Symfony\Component\Yaml\Yaml;
 
 /**
- * Removes the docker project (containers, networks, volumes = database!) of this folder
- * and, only with --files, the files of the folder.
+ * Removes the proxy hosts this installation created in Nginx Proxy Manager, the docker project (containers,
+ * networks, volumes = database!) of this folder and, only with --files, the files of the folder.
  *
  * Safety:
  * - works on the folder of the mercy script, never on the current working dir
@@ -74,6 +75,7 @@ class DestroyCommand extends Command
             "Folder: $root",
             $project !== null ? "Docker project '$project': containers, networks and volumes (the DATABASE) are removed, images: ".($input->getOption('images') ? 'all of this project' : 'only the ones built here')
                 : 'Docker: no .env or no resolvable compose project, nothing to remove',
+            $project !== null ? 'Nginx Proxy Manager: the proxy hosts this installation created' : null,
             $withFiles ? 'Files: EVERYTHING in the folder, including project/ with its secrets and the module repos' : 'Files: kept (use --files to delete them)',
         ]));
 
@@ -98,6 +100,14 @@ class DestroyCommand extends Command
         }
 
         if ($project !== null) {
+            // needs the running app container (it knows the NPM login), so before "down"
+            $config = $this->generatedConfig();
+            if ((bool) ($config['npm']['enabled'] ?? !empty($config['npm']['url']))
+                && !$this->runCommand(['docker', 'compose', 'exec', '-T', (string) ($config['kernel']['service'] ?? 'mercy.app'), 'php', 'artisan', 'mercy:sync-npm', '--remove'], $root, $io)
+            ) {
+                $io->warning('The proxy hosts in Nginx Proxy Manager were not removed (container not running or NPM not reachable), delete them there by hand.');
+            }
+
             $command = ['docker', 'compose', 'down', '--volumes', '--remove-orphans', '--rmi', $input->getOption('images') ? 'all' : 'local'];
             if (!$this->runCommand($command, $root, $io)) {
                 $io->warning("'docker compose down' failed, check 'docker ps -a' for leftovers of '$project'.");
@@ -183,6 +193,21 @@ class DestroyCommand extends Command
      *
      * @return bool
      */
+    /**
+     * The generated config of the first stage (storage/app/last-setup/...), empty if there is none.
+     *
+     * @return array<string, mixed>
+     */
+    private function generatedConfig(): array
+    {
+        $file = rtrim($this->app->configDir, '/').'/'.(reset($this->app->projectStages) ?: 'setup.yaml');
+        try {
+            return is_file($file) ? (array) Yaml::parseFile($file) : [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     private function runCommand(array $command, string $cwd, SymfonyStyle $io): bool
     {
         $process = new SymfonyProcess($command, $cwd, null, null, null);

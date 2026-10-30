@@ -7,6 +7,7 @@ use AklebeLaravel\MercyPhpDeployment\Commands\ConfigShowCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\DestroyCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\HostSetupCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\InstallDevEnvCommand;
+use AklebeLaravel\MercyPhpDeployment\Commands\LibrarySyncCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\InstallProdEnvCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\ProjectInitCommand;
 use AklebeLaravel\MercyPhpDeployment\Commands\StatusCommand;
@@ -255,6 +256,7 @@ class MercyApp
         $console->addCommand(new ConfigShowCommand($this));
         $console->addCommand(new DestroyCommand($this));
         $console->addCommand(new HostSetupCommand($this));
+        $console->addCommand(new LibrarySyncCommand($this));
         if ($this->buildDir !== null) {
             $console->addCommand(new BuildProdEnvCommand($this));
         }

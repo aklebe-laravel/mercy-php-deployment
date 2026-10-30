@@ -3,6 +3,8 @@ declare(strict_types = 1);
 
 namespace AklebeLaravel\MercyPhpDeployment;
 
+use Symfony\Component\Filesystem\Filesystem;
+
 /**
  * Libraries from a branch or a folder instead of their release: in the dev environment by "git.branches.<repo>"
  * or "git.library_paths.<repo>" (usually in project/config/local.yaml), in the build by "build_steps.branch".
@@ -16,8 +18,8 @@ namespace AklebeLaravel\MercyPhpDeployment;
  * branches the file is removed again and composer goes back to the versions of composer.json.
  *
  * Instead of a branch a library can come from a folder of this machine ("git.library_paths.<repo>", e.g. your own
- * working copy in its own PhpStorm project, whatever branch it has): copied into vendor on every "./mercy update"
- * (a symlink out of the scaffold would not work in the container).
+ * working copy in its own PhpStorm project, whatever branch it has): copied into CLONE_DIR/<repo> on every
+ * "./mercy update" or "./mercy library:sync" (the container sees only the scaffold, a path outside would not exist there).
  *
  * Composer changes composer.lock meanwhile: do not commit it while a test branch is active.
  */
@@ -83,7 +85,7 @@ final class LibraryBranch
         // packages of the last run: they go back to their version when their branch is gone
         $before = (array) (json_decode((string) $current, true)['_mercy']['packages'] ?? []);
 
-        $repositories = $packages = $copies = [];
+        $repositories = $packages = [];
         $paths = (array) ($this->process->getConfigValue('setup.git.library_paths', []) ?? []);
         foreach ($this->libraries($rootDir) as $repo => $url) {
             // a folder of this machine wins over a branch
@@ -95,9 +97,12 @@ final class LibraryBranch
 
                     return false;
                 }
-                $repositories[] = ['type' => 'path', 'url' => $dir, 'options' => ['symlink' => false, 'versions' => [$package => $version]]];
-                $packages[] = $copies[] = $package;
-                $this->process->notice(sprintf("%s: from '%s' (%s as %s), copied on every ./mercy update.", $repo, $dir, $package, $version));
+                // copied into the scaffold: the container (composer update of "mercy:app update") sees only the scaffold
+                $copy = self::CLONE_DIR."/$repo";
+                $this->mirror($absolute, "$rootDir/$copy");
+                $repositories[] = ['type' => 'path', 'url' => $copy, 'options' => ['symlink' => !$build, 'versions' => [$package => $version]]];
+                $packages[] = $package;
+                $this->process->notice(sprintf("%s: from '%s' (%s as %s), copied on every ./mercy update or ./mercy library:sync.", $repo, $dir, $package, $version));
                 continue;
             }
             if (($wanted = self::wanted($this->process, $repo, $build)) === null) {
@@ -153,9 +158,7 @@ final class LibraryBranch
         }
 
         // --no-scripts: the scripts run with the composer install that follows
-        return $this->process->run(['composer', 'update', ...$update, '--no-scripts', '--working-dir='.$rootDir], $rootDir, 600.0)
-               // a copied folder keeps its version, so composer would not copy changed files again
-               && (!$copies || $this->process->run(['composer', 'reinstall', ...$copies, '--no-scripts', '--working-dir='.$rootDir], $rootDir, 600.0));
+        return $this->process->run(['composer', 'update', ...$update, '--no-scripts', '--working-dir='.$rootDir], $rootDir, 600.0);
     }
 
     /**
@@ -187,6 +190,8 @@ final class LibraryBranch
     private function checkout(string $dir, string $url, string $branch, string $rootDir): bool
     {
         if (!is_dir("$dir/.git")) {
+            // e.g. a copy of git.library_paths before
+            new Filesystem()->remove($dir);
             @mkdir(dirname($dir), 0755, true);
 
             return $this->process->run(['git', 'clone', '--quiet', '--branch', $branch, $url, $dir], $rootDir, 600.0);
@@ -195,6 +200,20 @@ final class LibraryBranch
         return $this->process->run(['git', 'remote', 'set-url', 'origin', $url], $dir)
                && $this->process->run(['git', 'fetch', '--quiet', 'origin', $branch], $dir, 600.0)
                && $this->process->run(['git', 'checkout', '--quiet', '--force', '-B', $branch, 'FETCH_HEAD'], $dir);
+    }
+
+    /**
+     * Copy of a library folder (without .git, vendor and node_modules), removed files are removed in the copy too.
+     */
+    private function mirror(string $source, string $target): void
+    {
+        $skip = ['.git', 'vendor', 'node_modules'];
+        $files = new \RecursiveIteratorIterator(new \RecursiveCallbackFilterIterator(new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS), fn(\SplFileInfo $file) => !in_array($file->getFilename(), $skip, true),),
+            \RecursiveIteratorIterator::SELF_FIRST);
+        // fresh copy: mirror() with an own iterator would not delete removed files
+        $filesystem = new Filesystem();
+        $filesystem->remove($target);
+        $filesystem->mirror($source, $target, $files);
     }
 
     private function packageName(string $dir): ?string

@@ -99,7 +99,7 @@ Selected `setup.yaml` keys:
 - **Keys and logins of a machine** (who needs what):
 
   | For                                         | What                                       | Where to add it                         | Done by                              |
-            |---------------------------------------------|--------------------------------------------|-----------------------------------------|--------------------------------------|
+              |---------------------------------------------|--------------------------------------------|-----------------------------------------|--------------------------------------|
   | git of the deployment (modules, composer)   | deploy key `ssh.key`                       | SSH keys at Gitea/GitHub                | `host:setup` creates and tests it    |
   | your own git commands (`git clone project`) | your key `~/.ssh/id_ed25519`               | SSH keys at Gitea/GitHub                | you; on servers use it as `ssh.key`  |
   | the git server is the right one             | host key fingerprint                       | `ssh.fingerprints` of the network       | once per network                     |
@@ -157,7 +157,8 @@ Selected `setup.yaml` keys:
   on a branch keeps it, the IDE switches branches). New clones start with `git.branch` / `git.branches.<repo>` (if the
   remote has it), otherwise with the release (`version` of their block, e.g. `^2.0` in `base_requires`) or its branch.
   Libraries (git repositories in the scaffold's `composer.json`) keep their release unless `git.branches.<repo>`
-  (cloned to `storage/app/library-branch/`) or `git.library_paths.<repo>` (a folder, copied into `vendor`) says
+  (cloned to `storage/app/library-branch/`) or `git.library_paths.<repo>` (a folder, copied there too: the container sees only the scaffold;
+  `./mercy library:sync` after a change) says
   otherwise: `LibraryBranch` writes a `composer.local.json` with a path repository and a fixed version of the same
   major (2.99.0), so `^2.x` still matches. These settings belong into `project/config/local.yaml` (not versioned).
   `./mercy build` uses releases (latest scaffold tag, versions of the requires, `composer.lock`) and ignores them;
