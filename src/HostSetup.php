@@ -64,22 +64,51 @@ final class HostSetup
             return true;
         }
 
-        $dataHome = getenv('XDG_DATA_HOME') ?: Process::expandTilde('~/.local/share');
-        $file = "$dataHome/bash-completion/completions/$script";
+        $dir = (getenv('XDG_DATA_HOME') ?: Process::expandTilde('~/.local/share')).'/bash-completion/completions';
+        // the file of the old name (before 2.1) would only confuse
+        if ($script === 'mercy' && is_file("$dir/mercy.php")) {
+            @unlink("$dir/mercy.php");
+        }
+        $file = "$dir/$script";
         $content = str_replace(['{{ COMMAND_NAME }}', '{{ VERSION }}'],
             [$script, \Symfony\Component\Console\Command\CompleteCommand::COMPLETION_API_VERSION], (string) file_get_contents($template));
-        if (is_file($file) && file_get_contents($file) === $content) {
-            return true;
-        }
 
-        if ((!is_dir(dirname($file)) && !@mkdir(dirname($file), 0755, true)) || @file_put_contents($file, $content) === false) {
-            $this->process->warning("Tab completion not installed (cannot write $file).");
+        $changed = false;
+        if (!is_file($file) || file_get_contents($file) !== $content) {
+            if ((!is_dir($dir) && !@mkdir($dir, 0755, true)) || @file_put_contents($file, $content) === false) {
+                $this->process->warning("Tab completion not installed (cannot write $file).");
 
-            return true;
+                return true;
+            }
+            $changed = true;
         }
-        $this->process->notice("Tab completion installed for ./$script (in a new terminal: ./$script install --instance=<tab>).");
+        $changed = self::loadInEveryTerminal($file) || $changed;
+        if ($changed) {
+            $this->process->notice("Tab completion installed for ./$script (in a new terminal: ./$script install --instance=<tab>).");
+        }
 
         return true;
+    }
+
+    /**
+     * bash-completion loads the files of its folder only for commands found by their name ("mercy"), not for
+     * "./mercy". So a line in ~/.bash_completion (read by bash-completion in every new terminal) loads the file.
+     *
+     * @param  string  $file  completion script
+     *
+     * @return bool true if the line was added
+     */
+    public static function loadInEveryTerminal(string $file): bool
+    {
+        $rc = Process::expandTilde('~/.bash_completion');
+        $line = sprintf('[ -r %1$s ] && . %1$s  # tab completion of ./%2$s (added by Mercy)', escapeshellarg($file), basename($file));
+        $current = is_file($rc) ? (string) file_get_contents($rc) : '';
+        if (str_contains($current, $line)) {
+            return false;
+        }
+        $separator = $current === '' || str_ends_with($current, "\n") ? '' : "\n";
+
+        return @file_put_contents($rc, $current.$separator.$line."\n") !== false;
     }
 
     /**

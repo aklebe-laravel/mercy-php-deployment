@@ -145,9 +145,10 @@ Selected `setup.yaml` keys:
        If one does not accept it, the public key is shown to add there; in a terminal it waits and tests again.
        Put `ssh.fingerprints` and `git.url_rewrites` into the network config (e.g. `networks/home.yaml`), then every
        instance in that network gets them.
-    5. Tab completion (bash): writes `~/.local/share/bash-completion/completions/mercy`, so commands and
-       instances complete in a new terminal: `./mercy install --instance=<tab>`. Only with `./mercy`
-       (shebang, executable); with `php mercy` bash completes `php`, like with `php artisan`.
+    5. Tab completion (bash): writes `~/.local/share/bash-completion/completions/mercy` and one line in
+       `~/.bash_completion` that loads it (bash-completion loads its folder only for commands found by name,
+       not for `./mercy`), so commands and instances complete in a new terminal: `./mercy install --instance=<tab>`.
+       Only with `./mercy` (shebang, executable); with `php mercy` bash completes `php`, like with `php artisan`.
 - **Git url rewrites in containers:** `copy_ssh` writes the machine's `insteadOf` rewrites to
   `<ssh.docker_dir>/gitconfig`; the scaffold's `start-container` includes it for the `sail` user.
 - **APP_KEY survives:** the config env replaces the target env on every run, `APP_KEY` (written by `key:generate`

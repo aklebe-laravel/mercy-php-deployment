@@ -122,6 +122,38 @@ class HostSetupTest extends TestCase
         putenv('DOCKER_CONFIG');
     }
 
+    public function test_shellCompletion_installedAndLoadedInEveryTerminal(): void
+    {
+        $argv = $_SERVER['argv'];
+        $xdg = getenv('XDG_DATA_HOME');
+        putenv('XDG_DATA_HOME');
+        $completions = $this->home.'/.local/share/bash-completion/completions';
+        mkdir($completions, 0755, true);
+        file_put_contents("$completions/mercy.php", 'old');
+        $setup = new HostSetup($this->process);
+
+        try {
+            $_SERVER['argv'][0] = 'vendor/bin/phpunit';
+            $setup->shellCompletion();
+            $this->assertFileDoesNotExist("$completions/phpunit", 'only for the mercy script');
+
+            $_SERVER['argv'][0] = './mercy';
+            $setup->shellCompletion();
+            $this->assertStringContainsString('complete -F _sf_mercy mercy', file_get_contents("$completions/mercy"));
+            $this->assertFileDoesNotExist("$completions/mercy.php", 'the file of the old name is removed');
+            $rc = file_get_contents($this->home.'/.bash_completion');
+            $this->assertStringContainsString(". '$completions/mercy'", $rc, 'loaded in every terminal, also for ./mercy');
+
+            $notices = count($this->process->notices);
+            $setup->shellCompletion();
+            $this->assertSame($rc, file_get_contents($this->home.'/.bash_completion'), 'the line is added once');
+            $this->assertCount($notices, $this->process->notices, 'a second run changes nothing');
+        } finally {
+            $_SERVER['argv'] = $argv;
+            putenv($xdg === false ? 'XDG_DATA_HOME' : "XDG_DATA_HOME=$xdg");
+        }
+    }
+
     public function test_expectedFingerprints_githubBuiltIn(): void
     {
         $this->assertContains('SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU', new HostSetup($this->process)->expectedFingerprints('github.com'));
