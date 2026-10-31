@@ -259,7 +259,8 @@ removes all of them on `destroy`. External docker networks of the compose file a
 - **`build.lock.yaml`:** version, remote, branch, commit and dirty state of the scaffold, every module, theme and the
   `dev-*` composer packages, written to the image root (`/var/www/html/build.lock.yaml`).
 - **Registry login** happens before anything is built (build) or pulled (production); it asks for user and token in a
-  terminal (`docker login --password-stdin`).
+  terminal (`docker login --password-stdin`). In production it first checks the image without a login (`docker manifest inspect`): a public image needs no login, a missing tag stops with a hint before
+  the pull.
 - **Release files:** production `install` and `update` copy `compose.yaml` and the templates (`resources/setup/`) out of
   the pulled image (`docker create` + `docker cp`), so they always match the release.
 - **`migrate_layout`** moves an installer of the old layout (`install/config/.env`) to

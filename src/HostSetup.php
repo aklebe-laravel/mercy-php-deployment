@@ -260,6 +260,23 @@ final class HostSetup
         }
         $how = "docker login $registry  (GitHub ghcr.io: classic token with write:packages, read:packages is enough for production; "."Gitea: Settings > Applications, token with package read/write)";
 
+        // production only pulls: a public image needs no login, a missing one is reported before the pull
+        if (!$required && ($image = $this->registryImage()) !== '') {
+            [$code, $output] = $this->process->captureAll(['docker', 'manifest', 'inspect', $image], 30.0);
+            switch (self::imageAccess($code, $output)) {
+                case 'public':
+                    $this->process->notice("The image '$image' is public, no registry login needed.");
+
+                    return true;
+                case 'missing':
+                    $this->process->error("The image '$image' does not exist at '$registry'. Check kernel.version and git.registry_namespace (./mercy config kernel; ./mercy config git).");
+
+                    return false;
+                default:
+                    // private (a registry does not tell a private image from a missing one) or not reachable: ask
+            }
+        }
+
         $user = $this->process->prompt("Docker registry '$registry': not logged in. User name (empty = skip):");
         if ($user === null || $user === '') {
             if ($required) {
@@ -282,6 +299,49 @@ final class HostSetup
         $this->process->notice("docker: logged in at '$registry' as '$user'.");
 
         return true;
+    }
+
+    /**
+     * Full name of the image to pull, '' if the config does not tell it completely.
+     *
+     * @return string e.g. ghcr.io/my-org/my-product:1.4.0
+     */
+    public function registryImage(): string
+    {
+        $parts = [
+            trim((string) $this->process->getConfigValue('setup.git.registry_source', '')),
+            trim((string) $this->process->getConfigValue('setup.git.registry_namespace', '')),
+            trim((string) ($this->process->getConfigValue('setup.kernel.image') ?: $this->process->getConfigValue('setup.kernel.name', ''))),
+        ];
+        $version = trim((string) $this->process->getConfigValue('setup.kernel.version', ''));
+        if (in_array('', $parts, true) || $version === '') {
+            return '';
+        }
+
+        return implode('/', $parts).':'.$version;
+    }
+
+    /**
+     * Result of "docker manifest inspect <image>" without a login.
+     *
+     * @param  int  $code
+     * @param  string  $output
+     *
+     * @return string public | missing | denied | unknown (e.g. no network, old docker)
+     */
+    public static function imageAccess(int $code, string $output): string
+    {
+        if ($code === 0) {
+            return 'public';
+        }
+        if (preg_match('/unauthorized|denied|authentication required|forbidden/i', $output)) {
+            return 'denied';
+        }
+        if (preg_match('/manifest unknown|no such manifest/i', $output)) {
+            return 'missing';
+        }
+
+        return 'unknown';
     }
 
     /**

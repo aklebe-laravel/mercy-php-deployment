@@ -115,11 +115,35 @@ class HostSetupTest extends TestCase
         $this->assertTrue($setup->registryLogin(false));
         $this->assertStringContainsString('cannot be pulled', end($this->process->warnings));
 
+        // production: a public image needs no login, a missing one stops before the pull
+        $this->process->config += ['kernel' => ['name' => 'demo', 'version' => '1.4.0']];
+        $this->process->config['git']['registry_namespace'] = 'my-org';
+        $this->assertSame('git.example.com/my-org/demo:1.4.0', $setup->registryImage());
+        $this->process->docker = [0, '{"schemaVersion": 2}'];
+        $this->assertTrue($setup->registryLogin(false));
+        $this->assertStringContainsString('is public', end($this->process->notices));
+        $this->process->docker = [1, 'manifest unknown'];
+        $this->assertFalse($setup->registryLogin(false));
+        $this->assertStringContainsString('does not exist', end($this->process->errors));
+        $this->process->docker = [1, 'unauthorized'];
+        $this->assertTrue($setup->registryLogin(false), 'private: asks (no terminal here), then only a warning');
+        $this->process->docker = null;
+
         file_put_contents($this->home.'/docker/config.json', json_encode(['auths' => ['https://git.example.com' => ['auth' => 'x']]]));
         $this->assertTrue(HostSetup::isLoggedIn('git.example.com'));
         $this->assertFalse(HostSetup::isLoggedIn('ghcr.io'));
         $this->assertTrue($setup->registryLogin(true));
         putenv('DOCKER_CONFIG');
+    }
+
+    public function test_imageAccess_classifiesDockerOutput(): void
+    {
+        $this->assertSame('public', HostSetup::imageAccess(0, '{}'));
+        $this->assertSame('denied', HostSetup::imageAccess(1, 'error from registry: unauthorized'));
+        $this->assertSame('denied', HostSetup::imageAccess(1, 'denied: requested access to the resource is denied'));
+        $this->assertSame('missing', HostSetup::imageAccess(1, 'manifest unknown'));
+        $this->assertSame('missing', HostSetup::imageAccess(1, 'no such manifest: ghcr.io/x/y:1'));
+        $this->assertSame('unknown', HostSetup::imageAccess(1, 'dial tcp: lookup ghcr.io: no such host'));
     }
 
     public function test_shellCompletion_installedAndLoadedInEveryTerminal(): void
@@ -186,6 +210,8 @@ class HostSetupTestProcess extends Process
     public array $warnings = [];
     public string $scanOutput = '';
     public array $acceptedServers = [];
+    /** answer of "docker ..." commands: [exit code, output], null = not faked */
+    public ?array $docker = null;
 
     public function getConfigValue(string $key, mixed $default = null): mixed
     {
@@ -224,6 +250,10 @@ class HostSetupTestProcess extends Process
 
     public function captureAll(array $command, ?float $timeout = 10.0, ?string $input = null): array
     {
+        if ($command[0] === 'docker') {
+            return $this->docker ?? [1, 'not faked'];
+        }
+
         return in_array(end($command), $this->acceptedServers, true) ? [1, "Hi! You've successfully authenticated, but GitHub does not provide shell access."] : [255, 'Permission denied (publickey).'];
     }
 }
