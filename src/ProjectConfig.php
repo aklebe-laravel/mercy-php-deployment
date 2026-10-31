@@ -296,6 +296,12 @@ final class ProjectConfig
         if (array_key_exists($key, $known)) {
             return true;
         }
+        // a section the defaults know (e.g. an empty "kernel:" whose children are commented out)
+        foreach (array_keys($known) as $knownKey) {
+            if (str_starts_with((string) $knownKey, "$key.")) {
+                return true;
+            }
+        }
         // a free map/list in the defaults (written as {} or [ ]) accepts any keys below it
         $parts = explode('.', $key);
         while (count($parts) > 1) {
@@ -522,6 +528,12 @@ final class ProjectConfig
     public static function merge(array $base, array $override): array
     {
         foreach ($override as $key => $value) {
+            // an empty section ("kernel:" with all children commented out = null, or "{}") adds nothing, like
+            // array_merge() with an empty array: it never removes a map of an earlier layer. "~" of a single value
+            // still means "not set", and an empty list ("[ ]") still replaces a list.
+            if (($value === null || $value === []) && isset($base[$key]) && self::isMap($base[$key])) {
+                continue;
+            }
             if (is_array($value) && isset($base[$key]) && is_array($base[$key]) && !array_is_list($value) && !array_is_list($base[$key])) {
                 $base[$key] = self::merge($base[$key], $value);
             } else {
@@ -530,6 +542,14 @@ final class ProjectConfig
         }
 
         return $base;
+    }
+
+    /**
+     * A non-empty map (an empty array could be a list as well).
+     */
+    private static function isMap(mixed $value): bool
+    {
+        return is_array($value) && $value !== [] && !array_is_list($value);
     }
 
     /**

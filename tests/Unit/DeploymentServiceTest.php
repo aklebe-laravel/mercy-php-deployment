@@ -83,6 +83,24 @@ class DeploymentServiceTest extends TestCase
     /**
      * @return void
      */
+    public function test_getThemeName_fallbacks(): void
+    {
+        $deployment = new DockerProcess();
+        $deployment->yamlConfigs = ['setup' => ['kernel' => ['theme' => 'central-ui']]];
+        $this->assertSame('central-ui', $deployment->getThemeName());
+
+        // no kernel.theme: the first theme of the requires
+        $deployment->yamlConfigs = ['setup' => ['requires' => [['type' => 'module', 'names' => ['a-module']], ['type' => 'theme', 'names' => ['my-theme']]]]];
+        $this->assertSame('my', $deployment->getThemeName());
+
+        // nothing at all: never empty
+        $deployment->yamlConfigs = ['setup' => []];
+        $this->assertSame('mercy-blank', $deployment->getThemeName());
+    }
+
+    /**
+     * @return void
+     */
     public function test_getImageNameVersion_imageOverridesName(): void
     {
         $deployment = new DockerProcess();

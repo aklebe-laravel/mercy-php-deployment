@@ -923,7 +923,7 @@ class Process
                 'APP_ENV'              => $this->getConfigValue('setup.kernel.env'),
                 'APP_DOMAIN'           => $this->getConfigValue('setup.kernel.domain'),
                 'APP_IP'               => $this->getConfigValue('setup.kernel.ip'),
-                'THEME_NAME'           => $this->getConfigValue('setup.kernel.theme'),
+                'THEME_NAME'           => $this->getThemeName(),
                 'APP_INSTANCE_KEY'     => function () {
                     if (true) {
                         // use prominent high-value config values (like name, domain, git_host, ...) to generate same key for multiple setups with same values
@@ -1821,6 +1821,22 @@ class Process
         $updatedYamlContent = Yaml::dump($config, 4, 2);
 
         return (bool) file_put_contents($filepath, $updatedYamlContent);
+    }
+
+    /**
+     * Active theme: kernel.theme, otherwise the first theme of the requires (repo name without "-theme"),
+     * otherwise mercy-blank. Never empty, so THEME_NAME is never written as "null".
+     *
+     * @return string
+     */
+    public function getThemeName(): string
+    {
+        $theme = trim((string) $this->getConfigValue('setup.kernel.theme', ''));
+        if ($theme === '') {
+            $theme = (string) preg_replace('/-theme$/', '', (string) data_get($this->getFirstRequiredBlockWithThemeNames(), 'names.0', ''));
+        }
+
+        return $theme !== '' ? $theme : 'mercy-blank';
     }
 
     /**

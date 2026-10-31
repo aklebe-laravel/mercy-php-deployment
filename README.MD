@@ -6,11 +6,11 @@ application needed: it runs on the host before the app exists.
 
 It does three jobs, each a list of named, resumable steps driven by the project config:
 
-| Job                         | Where                     | Command                      |
-|-----------------------------|---------------------------|------------------------------|
-| dev environment             | scaffold                  | `./mercy install`, `update`  |
-| production image            | scaffold                  | `./mercy build`              |
-| production server           | installer                 | `./mercy install`, `update`  |
+| Job               | Where     | Command                     |
+|-------------------|-----------|-----------------------------|
+| dev environment   | scaffold  | `./mercy install`, `update` |
+| production image  | scaffold  | `./mercy build`             |
+| production server | installer | `./mercy install`, `update` |
 
 Users of Mercy normally only read the scaffold and installer READMEs. This README is the reference for the
 config model, every command and step, and the behaviour behind them.
@@ -45,27 +45,27 @@ new MercyApp(__DIR__, __DIR__.'/resources/setup', __DIR__.'/storage/app/last-set
     ->runDev();                                                 // installer: ->runProd()
 ```
 
-| Method                                 | Meaning                                                                                   |
-|----------------------------------------|-------------------------------------------------------------------------------------------|
-| `withProject($dir, [stage => file])`   | the project repository holds the configs; each stage is merged and written as `file`      |
-| `withBuild($dir)`                      | registers `build`; the image is built in `$dir`                                           |
-| `runDev()`                             | dev commands (scaffold)                                                                   |
-| `runProd()`                            | production commands (installer)                                                           |
-| `runDevBuildToProd()`                  | deprecated (before 2.1: `build.php create`), alias `create`                               |
+| Method                               | Meaning                                                                              |
+|--------------------------------------|--------------------------------------------------------------------------------------|
+| `withProject($dir, [stage => file])` | the project repository holds the configs; each stage is merged and written as `file` |
+| `withBuild($dir)`                    | registers `build`; the image is built in `$dir`                                      |
+| `runDev()`                           | dev commands (scaffold)                                                              |
+| `runProd()`                          | production commands (installer)                                                      |
+| `runDevBuildToProd()`                | deprecated (before 2.1: `build.php create`), alias `create`                          |
 
 ## Commands and steps
 
-| Command        | Tool             | Purpose                                                                                                   |
-|----------------|------------------|-----------------------------------------------------------------------------------------------------------|
-| `status`       | all              | default without a command: project, instance, config warnings, secrets, installed, containers, URL, next step (read only, no network) |
-| `config`       | all              | effective config of a stage with the origin of every value: `[filter] [--stage] [--all] [--redundant]`   |
-| `install`      | scaffold, installer | full installation                                                                                      |
-| `update`       | scaffold, installer | refresh an existing installation                                                                       |
-| `build`        | scaffold         | production image                                                                                          |
-| `destroy`      | scaffold, installer | remove the docker project (database!) and its proxy hosts; `--images`, `--files`, `--force`           |
-| `project:init` | scaffold         | create `project/` from `<templates>/project`                                                              |
-| `host:setup`   | scaffold         | prepare git and ssh of this machine, see [Preparing the machine](#preparing-the-machine)                  |
-| `library:sync` | scaffold         | copy libraries from `git.library_paths` again and `composer update` them                                  |
+| Command        | Tool                | Purpose                                                                                                                               |
+|----------------|---------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `status`       | all                 | default without a command: project, instance, config warnings, secrets, installed, containers, URL, next step (read only, no network) |
+| `config`       | all                 | effective config of a stage with the origin of every value: `[filter] [--stage] [--all] [--redundant]`                                |
+| `install`      | scaffold, installer | full installation                                                                                                                     |
+| `update`       | scaffold, installer | refresh an existing installation                                                                                                      |
+| `build`        | scaffold            | production image                                                                                                                      |
+| `destroy`      | scaffold, installer | remove the docker project (database!) and its proxy hosts; `--images`, `--files`, `--force`                                           |
+| `project:init` | scaffold            | create `project/` from `<templates>/project`                                                                                          |
+| `host:setup`   | scaffold            | prepare git and ssh of this machine, see [Preparing the machine](#preparing-the-machine)                                              |
+| `library:sync` | scaffold            | copy libraries from `git.library_paths` again and `composer update` them                                                              |
 
 Global option `--instance=<name>`, remembered in `project/.instance`.
 
@@ -81,13 +81,13 @@ Steps that prepare config and env (`check_dev_stage`, `setup_host`, `preparing_e
 production `prepare_env`, `refresh_env`; build `init_host_setup`, `init_target_setup`) also run when continuing at a
 later step, so a config fix takes effect.
 
-| Command        | Steps                                                                                                                                                                                                                                                                                                                                                                                           |
-|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| dev `install`  | check_dev_stage, setup_host, copy_root_files, preparing_env, copy_ssh, clone_dependencies, library_branch, composer_update, setup_env, build_containers, sail_up, generate_key, link_storage, _sync_npm, get_requires, update, migrate, health_check, summary                                                                                                                                   |
-| dev `update`   | check_dev_stage, setup_host, copy_root_files, copy_ssh, clone_dependencies, library_branch, composer_install, setup_env, build_containers (cached), sail_up, get_requires, update, sync_npm, migrate, health_check, summary                                                                                                                                                                      |
+| Command        | Steps                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| dev `install`  | check_dev_stage, setup_host, copy_root_files, preparing_env, copy_ssh, clone_dependencies, library_branch, composer_update, setup_env, build_containers, sail_up, generate_key, link_storage, _sync_npm, get_requires, update, migrate, health_check, summary                                                                                                                                                                                         |
+| dev `update`   | check_dev_stage, setup_host, copy_root_files, copy_ssh, clone_dependencies, library_branch, composer_install, setup_env, build_containers (cached), sail_up, get_requires, update, sync_npm, migrate, health_check, summary                                                                                                                                                                                                                           |
 | `build`        | init_host_setup, setup_host, registry_login, check_host_php, cleanup_build, clone_app, init_target_setup, check_platform_requirements, copy_root_files, prepare_env, get_base_requirements, library_branches, composer_install_1, get_mercy_requirements, composer_autoload, composer_install_2, npm_ci, build_frontend, build_mercy_assets, npm_run, write_build_lock, cleanup_after_build, build_image, save_image, create_bundle, push_to_registry |
-| prod `install` | check_host_php, check_platform_requirements, registry_login, shell_completion, pull_docker_image, fetch_release_files, prepare_env, start_containers, generate_key, link_storage, sync_npm, start_migration, show_status                                                                                                                                                                         |
-| prod `update`  | check_host_php, check_platform_requirements, registry_login, shell_completion, pull_docker_image, fetch_release_files, migrate_layout, refresh_env, start_containers, link_storage, sync_npm, start_migration, show_status                                                                                                                                                                       |
+| prod `install` | check_host_php, check_platform_requirements, registry_login, shell_completion, pull_docker_image, fetch_release_files, prepare_env, start_containers, generate_key, link_storage, sync_npm, start_migration, show_status                                                                                                                                                                                                                              |
+| prod `update`  | check_host_php, check_platform_requirements, registry_login, shell_completion, pull_docker_image, fetch_release_files, migrate_layout, refresh_env, start_containers, link_storage, sync_npm, start_migration, show_status                                                                                                                                                                                                                            |
 
 Output while the steps run:
 
@@ -113,26 +113,30 @@ A stage config is merged from these layers (maps recursively, lists replaced as 
 5. the instance (`config/instances/<name>.yaml`, usually `extends` its network)
 6. `config/secrets.yaml`, `config/<stage>.secrets.yaml`, `config/local.yaml` (not versioned)
 
+Empty values: an empty section (`kernel:` with all children commented out, or `{}`) adds nothing and never removes
+what an earlier layer set, so sections can be commented out freely. `~` of a single value means "not set" (e.g. back
+to no `kernel.image`), an empty list (`[ ]`) replaces a list (e.g. `url_rewrites: [ ]` for an instance without them).
+
 Every yaml may inherit others with `extends: [a.yaml, networks/b.yaml]` (relative to the file, inherited first,
 cycles are an error). A stage file without `extends` inherits `setup.yaml`. The project build stage extends the dev
 stage (`extends: [setup.yaml, dev.yaml]`), so an image is never built with a production domain.
 
 Project files therefore contain only differences, and a new library version brings new keys with their defaults
-without touching any project. Before every command unknown keys (typos, old names) are reported, renamed keys
-(`ProjectConfig::RENAMED_KEYS`) are moved to their new name with a warning. The merged result is written to the
+without touching any project. Before every command unknown keys (typos, old names) are reported, renamed keys (`ProjectConfig::RENAMED_KEYS`) are moved to their new name with a warning. The merged
+result is written to the
 generated config dir (`storage/app/last-setup/`).
 
 ### Files
 
-| File                                   | Meaning                                                                                       |
-|----------------------------------------|-----------------------------------------------------------------------------------------------|
-| `project/config/*.yaml`                | the project (versioned), see the layers above                                                 |
-| `project/config/secrets.yaml`          | secrets of this machine, merged last, masked in every output (ignored: `secrets.yaml`, `*.secrets.yaml`) |
-| `project/config/*-secrets.yaml`        | versionable secrets (e.g. a local dev tool), masked, inherited with `extends`; not for production |
-| `project/config/local.yaml`            | branches and libraries of this machine (not versioned)                                        |
-| `<templates>/setup-*.env`              | env templates, filled with values calculated from the config                                  |
-| `<templates>/core.yaml`                | Mercy core modules and default theme (scaffold only, not copied)                              |
-| `<generated>/setup*.yaml`, `setup-*.env` | merged config and env of this machine; fixed instance key, ports and keys live here         |
+| File                                     | Meaning                                                                                                  |
+|------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| `project/config/*.yaml`                  | the project (versioned), see the layers above                                                            |
+| `project/config/secrets.yaml`            | secrets of this machine, merged last, masked in every output (ignored: `secrets.yaml`, `*.secrets.yaml`) |
+| `project/config/*-secrets.yaml`          | versionable secrets (e.g. a local dev tool), masked, inherited with `extends`; not for production        |
+| `project/config/local.yaml`              | branches and libraries of this machine (not versioned)                                                   |
+| `<templates>/setup-*.env`                | env templates, filled with values calculated from the config                                             |
+| `<templates>/core.yaml`                  | Mercy core modules and default theme (scaffold only, not copied)                                         |
+| `<generated>/setup*.yaml`, `setup-*.env` | merged config and env of this machine; fixed instance key, ports and keys live here                      |
 
 Templates are copied to the generated dir only if missing; calculated values are written into the generated files on
 every run.
@@ -146,23 +150,23 @@ first line of every command names project, instance and stage.
 
 ### Selected keys
 
-| Key                                   | Meaning                                                                                              |
-|---------------------------------------|------------------------------------------------------------------------------------------------------|
-| `kernel.name`, `kernel.image`         | container prefix; image name (default `name`)                                                        |
-| `kernel.version`                      | build: release number (image tag); production: release to run; dev: from git                        |
-| `kernel.domain`, `kernel.ip`          | domain and host ip of the instance                                                                   |
-| `git.source`, `git.namespace`         | where modules, themes and the scaffold are cloned from                                               |
-| `git.scaffold`                        | scaffold url for the build (default `<git.source>:<git.namespace>/mercy-scaffold.git`)               |
-| `git.registry_source`, `git.registry_namespace` | registry of the image: `<source>/<namespace>/<image>:<version>`                            |
-| `git.url_rewrites`                    | git `insteadOf` rewrites of this machine and its containers                                          |
+| Key                                               | Meaning                                                                                       |
+|---------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| `kernel.name`, `kernel.image`                     | container prefix; image name (default `name`)                                                 |
+| `kernel.version`                                  | build: release number (image tag); production: release to run; dev: from git                  |
+| `kernel.domain`, `kernel.ip`                      | domain and host ip of the instance                                                            |
+| `git.source`, `git.namespace`                     | where modules, themes and the scaffold are cloned from                                        |
+| `git.scaffold`                                    | scaffold url for the build (default `<git.source>:<git.namespace>/mercy-scaffold.git`)        |
+| `git.registry_source`, `git.registry_namespace`   | registry of the image: `<source>/<namespace>/<image>:<version>`                               |
+| `git.url_rewrites`                                | git `insteadOf` rewrites of this machine and its containers                                   |
 | `git.branch`, `git.branches`, `git.library_paths` | development branches and local libraries, see [Releases and branches](#releases-and-branches) |
-| `requires`, `base_requires`           | modules and themes of the project; Mercy base modules (released versions)                            |
-| `env`                                 | free env vars (`NAME: value`), written 1:1 after all calculated values                               |
-| `env_strict_literals`                 | env keys written literally (no `$` expansion), e.g. passwords and API keys                           |
-| `provisioning.auto_port_start`        | first port of the auto ports of this instance                                                        |
-| `npm.*`                               | Nginx Proxy Manager: `enabled`, API, `forward` (`network` / `host`), hosts                           |
-| `ssh.key`, `ssh.known_hosts`, `ssh.fingerprints` | deploy key; git servers; their host key fingerprints (github.com built in)               |
-| `build_steps.*`                       | `branch`, `use_registry`, `create_bundle`, `optimize_composer`, `build_assets`                       |
+| `requires`, `base_requires`                       | modules and themes of the project; Mercy base modules (released versions)                     |
+| `env`                                             | free env vars (`NAME: value`), written 1:1 after all calculated values                        |
+| `env_strict_literals`                             | env keys written literally (no `$` expansion), e.g. passwords and API keys                    |
+| `provisioning.auto_port_start`                    | first port of the auto ports of this instance                                                 |
+| `npm.*`                                           | Nginx Proxy Manager: `enabled`, API, `forward` (`network` / `host`), hosts                    |
+| `ssh.key`, `ssh.known_hosts`, `ssh.fingerprints`  | deploy key; git servers; their host key fingerprints (github.com built in)                    |
+| `build_steps.*`                                   | `branch`, `use_registry`, `create_bundle`, `optimize_composer`, `build_assets`                |
 
 All keys with explanations: [resources/defaults/setup.yaml](resources/defaults/setup.yaml).
 
@@ -186,12 +190,12 @@ config, instead of only checking it. A fresh machine needs no manual git or ssh 
 
 Who needs which key:
 
-| For                                          | What                              | Added at                         | Done by                              |
-|----------------------------------------------|-----------------------------------|----------------------------------|--------------------------------------|
-| git of the deployment (modules, composer)    | deploy key `ssh.key`              | SSH keys at GitHub / Gitea       | `host:setup` creates and tests it    |
-| your own git commands (`git clone project`)  | your key `~/.ssh/id_ed25519`      | SSH keys at GitHub / Gitea       | you; on servers use it as `ssh.key`  |
-| trusting the git server                      | host key fingerprint              | `ssh.fingerprints` of the network | once per network                    |
-| push (build) or pull (production) the image  | registry token                    | the registry                     | step `registry_login` asks for it    |
+| For                                         | What                         | Added at                          | Done by                             |
+|---------------------------------------------|------------------------------|-----------------------------------|-------------------------------------|
+| git of the deployment (modules, composer)   | deploy key `ssh.key`         | SSH keys at GitHub / Gitea        | `host:setup` creates and tests it   |
+| your own git commands (`git clone project`) | your key `~/.ssh/id_ed25519` | SSH keys at GitHub / Gitea        | you; on servers use it as `ssh.key` |
+| trusting the git server                     | host key fingerprint         | `ssh.fingerprints` of the network | once per network                    |
+| push (build) or pull (production) the image | registry token               | the registry                      | step `registry_login` asks for it   |
 
 ## Behaviour worth knowing
 

@@ -59,6 +59,37 @@ class ProjectConfigTest extends TestCase
     /**
      * @return void
      */
+    public function test_merge_emptySectionKeepsEarlierMap(): void
+    {
+        $base = ['kernel' => ['name' => 'demo', 'theme' => 'central-ui'], 'env' => ['A' => '1'], 'requires' => [['names' => ['x']]]];
+
+        // "kernel:" with all children commented out (null), "env: {}" and "requires: [ ]"
+        $this->assertSame([
+            'kernel'   => ['name' => 'demo', 'theme' => 'central-ui'],
+            'env'      => ['A' => '1'],
+            'requires' => [],
+        ], ProjectConfig::merge($base, ['kernel' => null, 'env' => [], 'requires' => []]));
+        // "~" of a single value still means "not set"
+        $this->assertSame(['kernel' => ['name' => 'demo', 'theme' => null]], ProjectConfig::merge(['kernel' => ['name' => 'demo', 'theme' => 'x']], ['kernel' => ['theme' => null]]));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_merged_emptySectionInLaterLayer_noUnknownKey(): void
+    {
+        $this->writeDefaults('setup.yaml', ['kernel' => ['name' => 'mercy', 'theme' => 'mercy-blank']]);
+        $this->write('setup.yaml', ['kernel' => ['theme' => 'central-ui']]);
+        file_put_contents($this->dir.'/project/config/dev.yaml', "kernel:\n#  version: \"2.0.1\"\n");
+        $project = $this->project();
+
+        $this->assertSame(['kernel' => ['name' => 'mercy', 'theme' => 'central-ui']], $project->merged('dev'));
+        $this->assertSame([], $project->unknownKeys('dev'));
+    }
+
+    /**
+     * @return void
+     */
     public function test_merged_layersInOrder(): void
     {
         $this->write('setup.yaml', ['kernel' => ['name' => 'demo', 'env' => 'production'], 'ldap' => ['password' => '']]);
@@ -265,7 +296,9 @@ class ProjectConfigTest extends TestCase
         $this->assertSame('demo', $dev['kernel']['name']);
         $this->assertSame('local', $dev['kernel']['env']);
         $this->assertSame('production', $project->merged('prod')['kernel']['env']);
-        $this->assertNotEmpty($dev['requires']);
+        // the Mercy base modules come with base_requires, requires is for the project's own modules
+        $this->assertNotEmpty($dev['base_requires']);
+        $this->assertSame([], $dev['requires']);
         $this->assertArrayNotHasKey('domain', $dev['kernel'], '"~" in the defaults is not set');
         $this->assertSame([], $project->unknownKeys('dev'));
     }
