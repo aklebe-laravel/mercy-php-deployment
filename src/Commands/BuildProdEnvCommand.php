@@ -3,6 +3,7 @@
 namespace AklebeLaravel\MercyPhpDeployment\Commands;
 
 use AklebeLaravel\MercyPhpDeployment\DockerProcessDeployment;
+use AklebeLaravel\MercyPhpDeployment\ImageVersions;
 use AklebeLaravel\MercyPhpDeployment\LibraryBranch;
 use AklebeLaravel\MercyPhpDeployment\SailProcessDeployment;
 use Exception;
@@ -22,7 +23,8 @@ class BuildProdEnvCommand extends BaseCommand
     protected function configure(): void
     {
         $this->addArgument('step', InputArgument::OPTIONAL, 'Step number or name to start with (default: 1)')
-            ->addOption('info', 'i', InputOption::VALUE_NONE, 'Show list of steps');
+            ->addOption('info', 'i', InputOption::VALUE_NONE, 'Show list of steps')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Image version: "3" or "2.7" = next free number of this series, "2.7.0" = exactly this one (never an existing release)');
     }
 
     /**
@@ -115,7 +117,8 @@ class BuildProdEnvCommand extends BaseCommand
                     $deployment->filesystem->copy($devConfigSource.'/setup-build.yaml', $buildConfigDestination.'/setup.yaml', true);
                     $deployment->filesystem->copy($devConfigSource.'/setup-build.yaml', $buildConfigDestination.'/setup-build.yaml', true);
                     // releases or build_steps.branch, never the dev branches of this machine
-                    if (!$deployment->prepareBuildConfig([$buildConfigDestination.'/setup.yaml', $buildConfigDestination.'/setup-build.yaml'])) {
+                    // the image version (--tag, kernel.version auto) is remembered in storage/app (not in the image, see .dockerignore)
+                    if (!$deployment->prepareBuildConfig([$buildConfigDestination.'/setup.yaml', $buildConfigDestination.'/setup-build.yaml'], $buildDestination.'/storage/app/build-version')) {
                         return false;
                     }
 
@@ -265,6 +268,16 @@ class BuildProdEnvCommand extends BaseCommand
     {
         $deployment = new SailProcessDeployment();
         $deployment->initSetup($this->app->buildDestinationDir(), $this->app->configTemplateDir, $this->app->configDir);
+
+        // checked before anything is done; the number itself is chosen in init_target_setup (see Process::buildVersion())
+        if (($tag = $input->getOption('tag')) !== null) {
+            if (!ImageVersions::isTagOption(trim((string) $tag))) {
+                $deployment->error("Invalid --tag '$tag', use e.g. 3, 2.7 or 2.7.0.");
+
+                return Command::FAILURE;
+            }
+            $deployment->buildTag = trim((string) $tag);
+        }
 
         $steps = $this->getDeploymentSteps($deployment);
         if ($this->checkInfoOption($input, $deployment)) {

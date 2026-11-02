@@ -153,7 +153,7 @@ first line of every command names project, instance and stage.
 | Key                                               | Meaning                                                                                       |
 |---------------------------------------------------|-----------------------------------------------------------------------------------------------|
 | `kernel.name`, `kernel.image`                     | container prefix; image name (default `name`)                                                 |
-| `kernel.version`                                  | build: release number (image tag); production: release to run; dev: from git                  |
+| `kernel.version`                                  | build: image tag; production: release to run; dev: from git; `auto`: see Versions             |
 | `kernel.domain`, `kernel.ip`                      | domain and host ip of the instance                                                            |
 | `git.source`, `git.namespace`                     | where modules, themes and the scaffold are cloned from                                        |
 | `git.scaffold`                                    | scaffold url for the build (default `<git.source>:<git.namespace>/mercy-scaffold.git`)        |
@@ -210,6 +210,20 @@ tag and `build.lock.yaml`:
   `.env` and the started image always match.
 - **dev:** `git describe --tags --always --dirty` of the project (`dev` without git). A `kernel.version` in the dev
   config overrides it.
+- **`kernel.version: auto`** reads the tags of the image in the registry (with the login of `docker login`):
+    - build: the next release, `2.0.5` → `2.0.6`; after a pre-release or test image `2.0.6-rc1` → `2.0.6`; no tag yet →
+      `1.0.0`. Needs `build_steps.use_registry`. The chosen number is kept in `storage/app/build-version` of the build folder, so
+      resuming at a later step builds the same number (a fresh build starts anew).
+    - `./mercy build --tag=<x>` jumps (overrides `auto` and a fixed `kernel.version`): `--tag=3` → `3.0.0`,
+      `--tag=2.7` → `2.7.0` or the next free number of 2.7 (`2.7.1` exists → `2.7.2`, also for an older series as a
+      hotfix), `--tag=2.7.0` → exactly this one; an existing release is never built again. Afterwards `auto` counts on
+      from the highest number. With a branch build the suffix is added as usual (`3.0.0-feature-x`).
+    - production: the newest release (`1.2.3` or `v1.2.3`; pre-releases and test images are skipped), resolved once per
+      `install`/`update`, so every `update` moves to the newest image. `.env` gets the real number.
+    - dev: as without a version (git).
+
+  So one line in the product `setup.yaml` is enough for all stages; an instance that must stay on a release sets its
+  number (e.g. the production server).
 
 ### Releases and branches
 

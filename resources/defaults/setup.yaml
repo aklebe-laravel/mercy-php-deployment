@@ -15,7 +15,10 @@ kernel:
   name: "mercy"
   # docker image name if it differs from "name" (e.g. "my-product-web")
   image: ~
-  # release: set in build.yaml (image tag) and prod.yaml (release to run), dev takes it from git
+  # release: set in build.yaml (image tag) and prod.yaml (release to run), dev takes it from git.
+  # "auto" (from the image tags in the registry): build = next release (2.0.5 => 2.0.6, 2.0.6-rc1 => 2.0.6),
+  # production = newest release (pre-releases and test images like 2.0.6-feature-x are skipped)
+  # Jump with "./mercy build --tag=3" (3.0.0), "--tag=2.7" (next free 2.7.x) or "--tag=2.7.0" (exactly).
   version: ~
   # domain of the instance (without http://), set per instance
   domain: ~

@@ -260,6 +260,22 @@ final class HostSetup
         }
         $how = "docker login $registry  (GitHub ghcr.io: classic token with write:packages, read:packages is enough for production; "."Gitea: Settings > Applications, token with package read/write)";
 
+        // production with "kernel.version: auto": tags readable without a login = public image
+        if (!$required && ImageVersions::isAuto((string) $this->process->getConfigValue('setup.kernel.version', ''))) {
+            $repository = $this->process->imageRepository((array) $this->process->getConfigValue('setup', []));
+            if ($repository !== '' && ($tags = $this->process->imageVersions()->tags($registry, $repository)) !== null) {
+                if (ImageVersions::newest($tags) === null) {
+                    $this->process->error("The registry '$registry' has no release of '$repository' (tags like 1.2.3). Check git.registry_namespace and kernel.name/kernel.image (./mercy config git; ./mercy config kernel).");
+
+                    return false;
+                }
+                $this->process->notice("The image '$registry/$repository' is public, no registry login needed.");
+
+                return true;
+            }
+            // private or not reachable: ask
+        }
+
         // production only pulls: a public image needs no login, a missing one is reported before the pull
         if (!$required && ($image = $this->registryImage()) !== '') {
             [$code, $output] = $this->process->captureAll(['docker', 'manifest', 'inspect', $image], 30.0);
@@ -302,7 +318,8 @@ final class HostSetup
     }
 
     /**
-     * Full name of the image to pull, '' if the config does not tell it completely.
+     * Full name of the image to pull, '' if the config does not tell it completely
+     * (or "kernel.version: auto", the release is not known before the login).
      *
      * @return string e.g. ghcr.io/my-org/my-product:1.4.0
      */
@@ -314,7 +331,7 @@ final class HostSetup
             trim((string) ($this->process->getConfigValue('setup.kernel.image') ?: $this->process->getConfigValue('setup.kernel.name', ''))),
         ];
         $version = trim((string) $this->process->getConfigValue('setup.kernel.version', ''));
-        if (in_array('', $parts, true) || $version === '') {
+        if (in_array('', $parts, true) || $version === '' || ImageVersions::isAuto($version)) {
             return '';
         }
 

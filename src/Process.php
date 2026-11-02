@@ -5,6 +5,7 @@ namespace AklebeLaravel\MercyPhpDeployment;
 
 use Closure;
 use Exception;
+use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
@@ -136,6 +137,20 @@ class Process
      * @var array<string, string>
      */
     private array $gitVersions = [];
+
+    /**
+     * Production with "kernel.version: auto": the newest release, resolved once per run.
+     *
+     * @var string|null
+     */
+    private ?string $autoVersion = null;
+
+    /**
+     * "./mercy build --tag=<x[.y[.z]]>", see {@see self::buildVersion()}.
+     *
+     * @var string|null
+     */
+    public ?string $buildTag = null;
 
     /**
      * @var string
@@ -1398,17 +1413,30 @@ class Process
      * The build config: releases by default; "build_steps.branch" builds from that branch instead
      * (git.branch for modules, themes and libraries, image tag "<version>-<branch>").
      * The dev settings of this machine (git.branch(es), library_paths of local.yaml) never reach the build.
+     * The image version comes from {@see self::buildVersion()} ("--tag", "kernel.version: auto" or the config).
      *
-     * @param  list<string>  $files  the build config files in the build folder
+     * @param  list<string>  $files        the build config files in the build folder
+     * @param  string|null   $versionFile  where a version from the registry is remembered for this build
      *
      * @return bool
      */
-    public function prepareBuildConfig(array $files): bool
+    public function prepareBuildConfig(array $files, ?string $versionFile = null): bool
     {
+        $buildVersion = false;
         foreach ($files as $file) {
             $config = $this->loadYamlConfig($file);
             if (!$config) {
                 return false;
+            }
+            // the same number in every file, the registry is asked once
+            if ($buildVersion === false) {
+                $buildVersion = $this->buildVersion($config, $versionFile);
+                if ($buildVersion === null) {
+                    return false;
+                }
+            }
+            if ($buildVersion !== '') {
+                data_set($config, 'kernel.version', $buildVersion);
             }
             $branch = trim((string) data_get($config, 'build_steps.branch', ''));
             data_set($config, 'git.branch', $branch !== '' ? $branch : null);
@@ -1426,6 +1454,180 @@ class Process
         }
 
         return true;
+    }
+
+    /**
+     * Image version of the build (without the branch suffix):
+     * 1. "--tag" ({@see self::$buildTag}): see {@see ImageVersions::forTag()}
+     * 2. "kernel.version: auto": the next release after the tags in the registry
+     * 3. otherwise the "kernel.version" of the config ('' = unchanged)
+     *
+     * 1 and 2 are remembered in $versionFile: resuming at a later step builds the same number, without
+     * asking the registry and without "--tag" again (a new "--tag" decides anew). A fresh build removes
+     * the build folder and with it the file.
+     *
+     * @param  array        $config  the build config (setup.yaml format)
+     * @param  string|null  $versionFile
+     *
+     * @return string|null null: error reported
+     */
+    public function buildVersion(array $config, ?string $versionFile = null): ?string
+    {
+        $tag = trim((string) $this->buildTag);
+        if ($tag === '' && !ImageVersions::isAuto((string) data_get($config, 'kernel.version', ''))) {
+            return '';
+        }
+        if ($tag === '' && $versionFile !== null && is_file($versionFile) && ($remembered = trim((string) file_get_contents($versionFile))) !== '') {
+            $this->notice("Image version $remembered (chosen at the start of this build).");
+
+            return $remembered;
+        }
+
+        $version = $tag !== '' ? $this->taggedImageVersion($config, $tag) : $this->nextImageVersion($config);
+        if ($version !== null && $versionFile !== null) {
+            $this->filesystem->mkdir(dirname($versionFile));
+            file_put_contents($versionFile, $version."\n");
+        }
+
+        return $version;
+    }
+
+    /**
+     * Build with "kernel.version: auto": the next release after the tags of the image in the registry.
+     *
+     * @param  array  $config  the build config (setup.yaml format)
+     *
+     * @return string|null null: error reported
+     */
+    public function nextImageVersion(array $config): ?string
+    {
+        if (!data_get($config, 'build_steps.use_registry', true)) {
+            $this->error("'kernel.version: auto' counts on from the tags in the registry, but 'build_steps.use_registry' is off. Set a version or use --tag=<x.y.z>.");
+
+            return null;
+        }
+        $tags = $this->imageTags($config);
+        if ($tags === null) {
+            return null;
+        }
+        $version = ImageVersions::next($tags);
+        $newest = ImageVersions::newest($tags);
+        $this->notice(sprintf('kernel.version auto: building version %s (%s).', $version, $newest !== null ? "newest release in the registry: $newest" : 'no release in the registry yet'));
+
+        return $version;
+    }
+
+    /**
+     * Build with "--tag": see {@see ImageVersions::forTag()}.
+     *
+     * @param  array   $config  the build config (setup.yaml format)
+     * @param  string  $tag     e.g. "3", "2.7" or "2.7.0"
+     *
+     * @return string|null null: error reported
+     */
+    public function taggedImageVersion(array $config, string $tag): ?string
+    {
+        if (!ImageVersions::isTagOption($tag)) {
+            $this->error("Invalid --tag '$tag', use e.g. 3, 2.7 or 2.7.0.");
+
+            return null;
+        }
+        if (!data_get($config, 'build_steps.use_registry', true)) {
+            if (substr_count($tag, '.') === 2) {
+                $this->notice("--tag=$tag: 'build_steps.use_registry' is off, the registry is not checked for an existing release.");
+
+                return $tag;
+            }
+            $this->error("--tag=$tag needs the tags in the registry to find the next free number, but 'build_steps.use_registry' is off. Use the full number (e.g. --tag=$tag.0).");
+
+            return null;
+        }
+        $tags = $this->imageTags($config);
+        if ($tags === null) {
+            return null;
+        }
+        try {
+            $version = ImageVersions::forTag($tags, $tag);
+        } catch (InvalidArgumentException $e) {
+            $this->error($e->getMessage());
+
+            return null;
+        }
+        $this->notice("--tag=$tag: building version $version.");
+
+        return $version;
+    }
+
+    /**
+     * Production with "kernel.version: auto": the newest release of the image in the registry.
+     *
+     * @return string
+     * @throws Exception
+     */
+    public function newestImageVersion(): string
+    {
+        $config = (array) $this->getConfigValue('setup', []);
+        $tags = $this->imageTags($config);
+        if ($tags === null) {
+            throw new Exception("'kernel.version: auto' needs the tags of the image in the registry, see the error above.");
+        }
+        $version = ImageVersions::newest($tags);
+        if ($version === null) {
+            throw new Exception(sprintf("'kernel.version: auto': the registry has no release of '%s' yet (only tags like 1.2.3 count).", $this->imageRepository($config)));
+        }
+        $this->notice("kernel.version auto: newest release in the registry is $version.");
+
+        return $version;
+    }
+
+    /**
+     * Tags of the product image in the registry, null: error reported.
+     *
+     * @param  array  $config  setup.yaml format
+     *
+     * @return list<string>|null
+     */
+    public function imageTags(array $config): ?array
+    {
+        $registry = trim((string) data_get($config, 'git.registry_source', ''));
+        $repository = $this->imageRepository($config);
+        if ($registry === '' || $repository === '') {
+            $this->error("'kernel.version: auto' needs 'git.registry_source', 'git.registry_namespace' and 'kernel.name' (or 'kernel.image').");
+
+            return null;
+        }
+        $versions = $this->imageVersions();
+        $tags = $versions->tags($registry, $repository);
+        if ($tags === null) {
+            $this->error("Unable to read the tags of '$registry/$repository': ".$versions->lastError);
+        }
+
+        return $tags;
+    }
+
+    /**
+     * "<registry_namespace>/<image>" of the product image, '' if the config does not tell it.
+     *
+     * @param  array  $config  setup.yaml format
+     *
+     * @return string
+     */
+    public function imageRepository(array $config): string
+    {
+        $namespace = trim((string) data_get($config, 'git.registry_namespace', ''));
+        $image = trim((string) (data_get($config, 'kernel.image') ?: data_get($config, 'kernel.name', '')));
+
+        return $namespace !== '' && $image !== '' ? "$namespace/$image" : '';
+    }
+
+    /**
+     * Reads the image tags from the registry (tests replace it).
+     *
+     * @return ImageVersions
+     */
+    public function imageVersions(): ImageVersions
+    {
+        return new ImageVersions();
     }
 
     /**
@@ -1894,8 +2096,10 @@ class Process
     /**
      * The one version of the app, used for APP_VERSION, the image tag and build.lock.yaml:
      * - build: "setup.kernel.version" of setup-build.yaml, the release number of the image
-     * - production: "setup.kernel.version" of the installer config, the release to run (required)
-     * - dev: no fixed number, "git describe" of the project shows the code that really runs,
+     *   ("auto": the next release after the tags in the registry, see prepareBuildConfig())
+     * - production: "setup.kernel.version" of the installer config, the release to run (required;
+     *   "auto": the newest release in the registry, see ImageVersions)
+     * - dev: no fixed number ("auto" too), "git describe" of the project shows the code that really runs,
      *   e.g. "v2.0.1-rc1-3-g1a2b3c4-dirty" ("dev" without git)
      *
      * @return string
@@ -1904,6 +2108,14 @@ class Process
     public function getAppVersion(): string
     {
         $version = trim((string) $this->getConfigValue('setup.kernel.version', ''));
+        if (ImageVersions::isAuto($version)) {
+            if (!$this->versionFromGit) {
+                // production: asked once per run, so pull, .env and compose use the same release
+                return $this->autoVersion ??= $this->newestImageVersion();
+            }
+            // dev: the code that really runs (the build replaces "auto" before, see prepareBuildConfig())
+            $version = '';
+        }
         if ($version !== '') {
             return $version;
         }
