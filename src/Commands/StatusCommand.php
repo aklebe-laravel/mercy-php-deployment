@@ -75,6 +75,7 @@ class StatusCommand extends Command
             $project = $this->app->projectConfig();
             $merged = $project->merged($stage);
             $unknown = count($project->unknownKeys($stage));
+            $secretConflicts = count($project->secretConflicts($stage));
         } catch (Throwable $e) {
             $rows[] = ['✖', 'Config', $e->getMessage()];
 
@@ -86,6 +87,9 @@ class StatusCommand extends Command
         }
         if ($unknown > 0) {
             $rows[] = ['!', 'Config', "$unknown unknown key(s), see: $cmd config --all"];
+        }
+        if ($secretConflicts > 0) {
+            $rows[] = ['!', 'Secrets', "$secretConflicts secret(s) set differently in two layers, see the warnings of: $cmd config"];
         }
         // test branches are easily forgotten: always visible while set
         $branches = array_filter([is_string($merged['git']['branch'] ?? null) ? $merged['git']['branch'] : null]);

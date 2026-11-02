@@ -110,8 +110,16 @@ A stage config is merged from these layers (maps recursively, lists replaced as 
 3. `mercy:<stage>.yaml`: stage defaults ([dev](resources/defaults/dev.yaml): `env: local`, `dev_mode: true`;
    [build](resources/defaults/build.yaml): `env: production`, `dev_mode: false`)
 4. the project stage file (`config/<stage>.yaml`)
-5. the instance (`config/instances/<name>.yaml`, usually `extends` its network)
-6. `config/secrets.yaml`, `config/<stage>.secrets.yaml`, `config/local.yaml` (not versioned)
+5. `config/secrets.yaml`, `config/<stage>.secrets.yaml` (not versioned)
+6. the instance (`config/instances/<name>.yaml`, usually `extends` its network, which may `extends` a versioned
+   `*-secrets.yaml`)
+7. `config/local.yaml` (not versioned, only this machine, only for now)
+
+The instance always wins, also over `secrets.yaml`: `secrets.yaml` fills in what the versioned files leave open,
+a value that differs per instance or network (like the password of a local NPM) belongs into the instance or its
+network. Without an instance the order is the same as before: stage file, secrets, `local.yaml`.
+A secret that two layers set to different values is reported before every command (only one of them can win):
+`Secret 'npm.password' is set differently in secrets.yaml and networks/npm-local.yaml, networks/npm-local.yaml wins`.
 
 Empty values: an empty section (`kernel:` with all children commented out, or `{}`) adds nothing and never removes
 what an earlier layer set, so sections can be commented out freely. `~` of a single value means "not set" (e.g. back
@@ -128,15 +136,15 @@ generated config dir (`storage/app/last-setup/`).
 
 ### Files
 
-| File                                     | Meaning                                                                                                  |
-|------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| `project/config/*.yaml`                  | the project (versioned), see the layers above                                                            |
-| `project/config/secrets.yaml`            | secrets of this machine, merged last, masked in every output (ignored: `secrets.yaml`, `*.secrets.yaml`) |
-| `project/config/*-secrets.yaml`          | versionable secrets (e.g. a local dev tool), masked, inherited with `extends`; not for production        |
-| `project/config/local.yaml`              | branches and libraries of this machine (not versioned)                                                   |
-| `<templates>/setup-*.env`                | env templates, filled with values calculated from the config                                             |
-| `<templates>/core.yaml`                  | Mercy core modules and default theme (scaffold only, not copied)                                         |
-| `<generated>/setup*.yaml`, `setup-*.env` | merged config and env of this machine; fixed instance key, ports and keys live here                      |
+| File                                     | Meaning                                                                                                          |
+|------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| `project/config/*.yaml`                  | the project (versioned), see the layers above                                                                    |
+| `project/config/secrets.yaml`            | secrets of this machine, before the instance, masked in every output (ignored: `secrets.yaml`, `*.secrets.yaml`) |
+| `project/config/*-secrets.yaml`          | versionable secrets (e.g. a local dev tool), masked, inherited with `extends`; not for production                |
+| `project/config/local.yaml`              | branches and libraries of this machine (not versioned)                                                           |
+| `<templates>/setup-*.env`                | env templates, filled with values calculated from the config                                                     |
+| `<templates>/core.yaml`                  | Mercy core modules and default theme (scaffold only, not copied)                                                 |
+| `<generated>/setup*.yaml`, `setup-*.env` | merged config and env of this machine; fixed instance key, ports and keys live here                              |
 
 Templates are copied to the generated dir only if missing; calculated values are written into the generated files on
 every run.

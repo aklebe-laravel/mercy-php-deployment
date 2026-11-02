@@ -304,7 +304,7 @@ class ProjectConfigTest extends TestCase
     }
 
     /**
-     * An instance comes after the stage file, with the network it inherits; secrets stay last.
+     * An instance comes after the stage file and the secrets, with the network it inherits.
      *
      * @return void
      */
@@ -319,8 +319,8 @@ class ProjectConfigTest extends TestCase
         $this->write('secrets.yaml', ['npm' => ['password' => 'secret']]);
         $project = new ProjectConfig($this->dir.'/project', $this->dir.'/defaults', 'vm-dev');
 
-        $this->assertSame(['setup.yaml', 'dev.yaml', 'networks/home.yaml', 'instances/vm-dev.yaml', 'secrets.yaml'], array_keys($project->layers('dev')));
-        $this->assertSame(['kernel' => ['name' => 'demo', 'domain' => 'vm.example'], 'npm' => ['url' => 'https://npm.home', 'password' => 'secret']], $project->merged('dev'));
+        $this->assertSame(['setup.yaml', 'dev.yaml', 'secrets.yaml', 'networks/home.yaml', 'instances/vm-dev.yaml'], array_keys($project->layers('dev')));
+        $this->assertSame(['kernel' => ['name' => 'demo', 'domain' => 'vm.example'], 'npm' => ['password' => 'secret', 'url' => 'https://npm.home']], $project->merged('dev'));
         $this->assertSame(['vm-dev'], $project->instances());
     }
 
@@ -349,5 +349,67 @@ class ProjectConfigTest extends TestCase
 
         $this->expectExceptionMessage('Instances: prod-server');
         new ProjectConfig($this->dir.'/project', $this->dir.'/defaults', 'prod-servr')->layers('prod');
+    }
+
+    /**
+     * The instance (and its network) wins over secrets.yaml: a machine with a local secrets.yaml must not
+     * replace the password of the network (case: npm.password of networks/npm-local.yaml).
+     *
+     * @return void
+     */
+    public function test_instance_winsOverSecrets(): void
+    {
+        mkdir($this->dir.'/project/config/networks');
+        mkdir($this->dir.'/project/config/instances');
+        $this->write('setup.yaml', ['kernel' => ['name' => 'demo']]);
+        $this->write('shared-secrets.yaml', ['ldap' => ['password' => 'shared']]);
+        $this->write('networks/home.yaml', ['extends' => ['../shared-secrets.yaml'], 'npm' => ['url' => 'https://npm.home']]);
+        $this->write('networks/npm-local.yaml', ['npm' => ['url' => 'http://localhost:81/api', 'password' => 'local-npm']]);
+        $this->write('instances/dev-main.yaml', ['extends' => ['../networks/home.yaml', '../networks/npm-local.yaml']]);
+        $this->write('secrets.yaml', ['npm' => ['password' => 'home-npm'], 'env' => ['PROXMOX_TOKEN_SECRET' => 'abc']]);
+        $project = new ProjectConfig($this->dir.'/project', $this->dir.'/defaults', 'dev-main');
+
+        $this->assertSame(['setup.yaml', 'secrets.yaml', 'shared-secrets.yaml', 'networks/home.yaml', 'networks/npm-local.yaml', 'instances/dev-main.yaml'], array_keys($project->layers('dev')));
+        $merged = $project->merged('dev');
+        $this->assertSame('local-npm', $merged['npm']['password']);
+        // what only secrets.yaml sets is still there
+        $this->assertSame('abc', $merged['env']['PROXMOX_TOKEN_SECRET']);
+        $this->assertSame('shared', $merged['ldap']['password']);
+    }
+
+    /**
+     * A secret with two different values in two layers is reported, equal or empty values are not.
+     *
+     * @return void
+     */
+    public function test_secretConflicts_differentValuesReported(): void
+    {
+        mkdir($this->dir.'/project/config/networks');
+        mkdir($this->dir.'/project/config/instances');
+        $this->write('setup.yaml', ['kernel' => ['name' => 'demo'], 'env' => ['PFSENSE_API_KEY' => '']]);
+        $this->write('networks/npm-local.yaml', ['npm' => ['password' => 'local-npm', 'user' => 'me@example']]);
+        $this->write('instances/dev-main.yaml', ['extends' => ['../networks/npm-local.yaml']]);
+        $this->write('secrets.yaml', ['npm' => ['password' => 'home-npm', 'user' => 'me@example'], 'env' => ['PFSENSE_API_KEY' => 'key']]);
+        $project = new ProjectConfig($this->dir.'/project', $this->dir.'/defaults', 'dev-main');
+
+        $this->assertSame([
+            'npm.password' => ['winner' => 'networks/npm-local.yaml', 'overridden' => ['secrets.yaml']],
+        ], $project->secretConflicts('dev'));
+    }
+
+    /**
+     * Without instance the order is unchanged: stage file, secrets, local.yaml.
+     *
+     * @return void
+     */
+    public function test_withoutInstance_secretsAfterStageFile(): void
+    {
+        $this->write('setup.yaml', ['kernel' => ['name' => 'demo']]);
+        $this->write('dev.yaml', ['npm' => ['password' => 'versioned']]);
+        $this->write('secrets.yaml', ['npm' => ['password' => 'secret']]);
+        $project = $this->project();
+
+        $this->assertSame(['setup.yaml', 'dev.yaml', 'secrets.yaml'], array_keys($project->layers('dev')));
+        $this->assertSame('secret', $project->merged('dev')['npm']['password']);
     }
 }

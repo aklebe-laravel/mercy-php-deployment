@@ -12,11 +12,14 @@ use Symfony\Component\Yaml\Yaml;
  * so a project file contains only what differs:
  *
  *   mercy:setup.yaml (lowest) -> project files the stage inherits (setup.yaml, networks/...)
- *   -> mercy:<stage>.yaml -> project <stage>.yaml -> instance -> secrets -> local.yaml
+ *   -> mercy:<stage>.yaml -> project <stage>.yaml -> secrets -> instance -> local.yaml
  *
  * The stage defaults sit right before the stage file: they win over the product base (e.g. dev_mode of the
  * dev stage), the stage file wins over them. An instance (one installation, chosen with --instance) comes after
- * the stage file: config/instances/<name>.yaml with its "extends" (usually a network file). Project files:
+ * the stage file and the secrets: config/instances/<name>.yaml with its "extends" (usually a network file, which may
+ * extend a versioned *-secrets.yaml). So the instance always wins, also over secrets.yaml: a secret that differs per
+ * instance belongs into the instance (or its network), secrets.yaml only fills in what the versioned files leave
+ * open. A secret set in two layers with different values is reported by secretConflicts(). Project files:
  *
  *   project/config/setup.yaml           base config of the product
  *   project/config/<stage>.yaml         entry of a stage (dev, build, prod): its differences
@@ -29,7 +32,7 @@ use Symfony\Component\Yaml\Yaml;
  *   extends: [ setup.yaml, networks/home.yaml ]
  *
  * The inherited files come first (in the given order, each with its own "extends"), then the file itself.
- * A stage file without "extends" inherits "setup.yaml". The secrets are merged last, local.yaml after them.
+ * A stage file without "extends" inherits "setup.yaml". The secrets come before the instance, local.yaml is always last.
  * The result is written to the config dir (e.g. storage/app/last-setup/setup.yaml), where the deployment reads it.
  *
  * Keys that the defaults do not know are reported by unknownKeys() (typos, old names); keys that were renamed
@@ -148,17 +151,23 @@ final class ProjectConfig
         if ($stageFile !== null) {
             $layers[$this->label($stageFile)] = $stageFile;
         }
+        // secrets of this machine: before the instance, so the instance (and its network) always wins
+        foreach (['secrets.yaml', "$stage.secrets.yaml"] as $name) {
+            if (is_file("$dir/$name")) {
+                $file = (string) realpath("$dir/$name");
+                $layers[$this->label($file)] = $file;
+            }
+        }
         // the instance and what it inherits (network, ...); files already used keep their earlier position
         if ($this->instance !== null) {
             foreach ($this->resolve($this->instanceFile($this->instance), false, []) as $file) {
                 $layers[$this->label($file)] ??= $file;
             }
         }
-        foreach (['secrets.yaml', "$stage.secrets.yaml", self::LOCAL_FILE] as $name) {
-            if (is_file("$dir/$name")) {
-                $file = (string) realpath("$dir/$name");
-                $layers[$this->label($file)] = $file;
-            }
+        // only this machine, only for now: always last
+        if (is_file("$dir/".self::LOCAL_FILE)) {
+            $file = (string) realpath("$dir/".self::LOCAL_FILE);
+            $layers[$this->label($file)] = $file;
         }
 
         return $layers;
@@ -283,6 +292,48 @@ final class ProjectConfig
         }
 
         return $redundant;
+    }
+
+    /**
+     * Keys that a secret layer (secrets.yaml, <stage>.secrets.yaml, *-secrets.yaml) and at least one other project
+     * layer set to different, non empty values. Only one of them can win, the others are silently ignored:
+     * the most common cause of "wrong password" (e.g. npm.password in secrets.yaml and in a network file).
+     *
+     * @param  string  $stage
+     *
+     * @return array<string, array{winner: string, overridden: list<string>}>  key => labels of the layers
+     * @throws Exception
+     */
+    public function secretConflicts(string $stage): array
+    {
+        $setBy = [];
+        foreach ($this->layerData($stage) as $label => $data) {
+            if (self::isDefaultsLayer($label)) {
+                continue;
+            }
+            foreach (self::flatten($data) as $key => $value) {
+                if ($key === self::EXTENDS_KEY || $value === null || $value === '' || $value === []) {
+                    continue;
+                }
+                $setBy[$key][$label] = $value;
+            }
+        }
+
+        $conflicts = [];
+        foreach ($setBy as $key => $values) {
+            $labels = array_keys($values);
+            if (count($labels) < 2 || !array_filter($labels, self::isSecretLayer(...))) {
+                continue;
+            }
+            if (count(array_unique(array_map(fn($v) => serialize($v), $values))) < 2) {
+                continue;
+            }
+            // the last layer wins
+            $winner = (string) array_pop($labels);
+            $conflicts[$key] = ['winner' => $winner, 'overridden' => $labels];
+        }
+
+        return $conflicts;
     }
 
     /**

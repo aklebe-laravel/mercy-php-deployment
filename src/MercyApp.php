@@ -146,6 +146,16 @@ class MercyApp
             foreach ($project->unknownKeys($stage) as $key => $label) {
                 $messages[] = "Unknown config key '$key' in $label (typo or old name? see: ".self::command()." config --all).";
             }
+            // two different values for one secret: only one wins, the other is ignored silently
+            foreach ($project->secretConflicts($stage) as $key => $conflict) {
+                $messages[] = sprintf("Secret '%s' is set differently in %s and %s, %s wins (see: %s config %s).",
+                    $key,
+                    implode(', ', $conflict['overridden']),
+                    $conflict['winner'],
+                    $conflict['winner'],
+                    self::command(),
+                    $key);
+            }
         }
         foreach (array_unique($messages) as $message) {
             warning($message);
